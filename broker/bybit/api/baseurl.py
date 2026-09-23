@@ -4,7 +4,7 @@ import os
 import time
 from urllib.parse import urlencode
 
-BASE_URL = os.getenv("BYBIT_BASE_URL", "https://api.bybit.com")
+BASE_URL = os.getenv("BYBIT_BASE_URL", "https://api.bybit.kz")
 
 
 def get_url(endpoint: str) -> str:
