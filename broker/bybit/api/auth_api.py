@@ -44,11 +44,23 @@ def authenticate_broker(code):
         logger.exception("Bybit authentication request failed")
         return None, f"Authentication request failed: {exc}"
 
-    data = response.json() if response.content else {}
+    response_text = response.text.strip()
+    try:
+        data = response.json() if response_text else {}
+    except ValueError:
+        data = {}
+
     if response.status_code == 200 and data.get("retCode") == 0:
         logger.info("Bybit authentication successful")
         return api_key, None
 
-    msg = data.get("retMsg") or f"Unexpected HTTP {response.status_code}"
+    ret_code = data.get("retCode")
+    ret_msg = data.get("retMsg")
+    if ret_msg:
+        msg = f"{ret_msg} (retCode={ret_code})" if ret_code is not None else ret_msg
+    else:
+        body = response_text[:300] if response_text else "empty response body"
+        content_type = response.headers.get("content-type", "unknown")
+        msg = f"HTTP {response.status_code} from Bybit ({content_type}): {body}"
     logger.error("Bybit authentication rejected: %s", msg)
     return None, msg

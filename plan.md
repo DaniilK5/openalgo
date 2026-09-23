@@ -4,6 +4,7 @@
 - Research and auth scaffold are completed.
 - Bybit is registered in platform config, login flow and proxy wiring.
 - The project has a working scaffold, but not a live-validated Bybit integration yet.
+- Operational note: the app can log in to OpenAlgo normally and then redirect to /broker when there is no stored broker session. This is expected before the user connects a broker. The real blocker is a missing or inactive broker config for the selected broker, such as Bybit not being present in VALID_BROKERS / REDIRECT_URL.
 
 ## Recommended execution path
 The staged Bybit integration has reached the final verification pass: contract validation, master-symbol build, REST market-data, signed order/account flow, and streaming registration have all been completed. The remaining work is live hardening with a real account and real API keys, not a broad rewrite.
