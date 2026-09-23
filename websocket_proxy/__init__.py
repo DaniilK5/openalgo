@@ -108,6 +108,9 @@ from broker.zerodha.streaming.zerodha_adapter import ZerodhaWebSocketAdapter
 # Import the arrow_adapter
 from broker.arrow.streaming.arrow_adapter import ArrowWebSocketAdapter
 
+# Import the bybit_adapter
+from broker.bybit.streaming.bybit_adapter import BybitWebSocketAdapter
+
 # Import the hdfcsky_adapter
 from broker.hdfcsky.streaming.hdfcsky_adapter import HDFCSkyWebSocketAdapter
 
@@ -146,6 +149,7 @@ register_adapter("pocketful", PocketfulWebSocketAdapter)
 register_adapter("nubra", NubraWebSocketAdapter)
 register_adapter("rmoney", RMoneyWebSocketAdapter)
 register_adapter("arrow", ArrowWebSocketAdapter)
+register_adapter("bybit", BybitWebSocketAdapter)
 register_adapter("hdfcsky", HDFCSkyWebSocketAdapter)
 register_adapter("hdfcsecurities", HDFCSecuritiesWebSocketAdapter)
 
@@ -201,6 +205,7 @@ __all__ = [
     "NubraWebSocketAdapter",
     "RMoneyWebSocketAdapter",
     "ArrowWebSocketAdapter",
+    "BybitWebSocketAdapter",
     "HDFCSkyWebSocketAdapter",
     "HDFCSecuritiesWebSocketAdapter",
 ]

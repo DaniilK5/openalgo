@@ -21,6 +21,7 @@ const allBrokers = [
   { id: 'aliceblue', name: 'Alice Blue', authType: 'totp' },
   { id: 'angel', name: 'Angel One', authType: 'totp' },
   { id: 'arrow', name: 'Arrow', authType: 'oauth' },
+  { id: 'bybit', name: 'Bybit', authType: 'oauth' },
   { id: 'compositedge', name: 'CompositEdge', authType: 'oauth' },
   { id: 'dhan', name: 'Dhan', authType: 'oauth' },
   { id: 'deltaexchange', name: 'Delta Exchange', authType: 'totp' },
@@ -195,6 +196,10 @@ export default function BrokerSelect() {
       case 'arrow':
         // Arrow hosted login; redirects back to /arrow/callback with request-token.
         loginUrl = `https://app.arrow.trade/app/login?appID=${broker_api_key}`
+        break
+
+      case 'bybit':
+        loginUrl = `/${selectedBroker}/callback`
         break
 
       case 'hdfcsecurities':
