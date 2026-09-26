@@ -114,6 +114,47 @@ def test_realtime_orders_retry_with_required_filters_when_category_only_is_rejec
     assert {row["orderId"] for row in rows} == {"linear-USDT", "linear-USDC"}
 
 
+def test_realtime_orders_accept_empty_successful_filtered_responses(monkeypatch):
+    requests = []
+
+    def fake_fetch(endpoint, auth, params, page_size=50, max_pages=100):
+        requests.append(params.copy())
+        if "settleCoin" not in params:
+            raise ValueError("Bybit requires a symbol, settle coin, or base coin.")
+        return []
+
+    monkeypatch.setattr(order_api, "_fetch_pages", fake_fetch)
+
+    rows = order_api._fetch_realtime_orders("token", "linear")
+
+    assert rows == []
+    assert requests == [
+        {"category": "linear"},
+        {"category": "linear", "settleCoin": "USDT"},
+        {"category": "linear", "settleCoin": "USDC"},
+    ]
+
+
+def test_orderbook_returns_empty_result_when_filtered_realtime_queries_are_empty(monkeypatch):
+    monkeypatch.setattr(order_api, "_utc_day_bounds", lambda: (100, 200))
+
+    def fake_fetch(endpoint, auth, params, page_size=50, max_pages=100):
+        if endpoint.endswith("/history"):
+            return []
+        category = params["category"]
+        if category == "linear" and "settleCoin" not in params:
+            raise ValueError("Bybit requires a settle coin.")
+        if category == "inverse" and "settleCoin" not in params:
+            raise ValueError("Bybit requires a settle coin.")
+        if category == "option" and "baseCoin" not in params:
+            raise ValueError("Bybit requires a base coin.")
+        return []
+
+    monkeypatch.setattr(order_api, "_fetch_pages", fake_fetch)
+
+    assert order_api.get_order_book("token") == {"result": []}
+
+
 def test_cancel_all_scans_categories_via_realtime_helper(monkeypatch):
     calls = []
     monkeypatch.setattr(
