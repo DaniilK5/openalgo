@@ -37,7 +37,11 @@ def _map_wallet_response(data):
     if not isinstance(data, dict) or type(data.get("retCode")) is not int:
         raise ValueError("Bybit wallet response is malformed")
     if data["retCode"] != 0:
-        logger.warning("Bybit wallet endpoint returned retCode=%s", data["retCode"])
+        logger.warning(
+            "Bybit wallet endpoint returned retCode=%s retMsg=%s",
+            data["retCode"],
+            data.get("retMsg"),
+        )
         raise ValueError("Bybit wallet request was rejected")
 
     result = data.get("result")
