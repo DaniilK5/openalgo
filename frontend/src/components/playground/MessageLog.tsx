@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { formatAppTime } from '@/lib/dateTime'
 import { cn } from '@/lib/utils'
 import type { WebSocketMessage } from '@/types/websocket'
 
@@ -69,12 +70,7 @@ function getTokenClassName(type: SyntaxToken['type']): string {
 }
 
 function formatTimestamp(timestamp: number): string {
-  const date = new Date(timestamp)
-  const hours = String(date.getHours()).padStart(2, '0')
-  const minutes = String(date.getMinutes()).padStart(2, '0')
-  const seconds = String(date.getSeconds()).padStart(2, '0')
-  const millis = String(date.getMilliseconds()).padStart(3, '0')
-  return `${hours}:${minutes}:${seconds}.${millis}`
+  return formatAppTime(timestamp, { second: '2-digit', fractionalSecondDigits: 3 })
 }
 
 interface MessageLogProps {

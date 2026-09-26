@@ -14,8 +14,8 @@ live:
 **The timezone is explicit, on the scheduler and on every trigger.**
 ``flow_scheduler_service`` and ``historify_scheduler_service`` build a
 ``CronTrigger`` with neither, so their jobs fire in server-local time. A VPS in
-UTC runs a 09:20 IST entry at 14:50 IST. Trading times in this product are
-always IST, so ``Asia/Kolkata`` is passed in both places.
+UTC runs a 09:20 IST entry at 14:50 IST. Existing strategy schedules without a
+timezone remain in Asia/Kolkata; new schedules carry their timezone explicitly.
 
 **Job defaults are set.** APScheduler's default ``misfire_grace_time`` is one
 second. Production is a single Gunicorn worker, so a 09:20 job whose worker is
@@ -60,13 +60,13 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from database import strategy_module_db as store
 from utils.logging import get_logger
+from utils.timezones import APP_TIMEZONE, LEGACY_SCHEDULE_TIMEZONE
 
 logger = get_logger(__name__)
 
-#: Every trading time in this product is IST. Passed to the scheduler *and* to
-#: each trigger: a trigger built without one inherits the machine's local zone,
-#: not the scheduler's, on some APScheduler paths.
-IST = pytz.timezone("Asia/Kolkata")
+#: Scheduler baseline for exchange-specific safety jobs. Per-strategy recurring
+#: triggers carry their own timezone, with legacy rows remaining on IST.
+IST = pytz.timezone(LEGACY_SCHEDULE_TIMEZONE)
 
 #: Applied to every job. See the module docstring on misfire_grace_time.
 JOB_DEFAULTS: dict[str, Any] = {
@@ -277,6 +277,11 @@ def _planned_jobs(row: store.SmStrategy) -> list[dict[str, Any]]:
     config = row.scheduler if isinstance(row.scheduler, dict) else None
     label = f"strategy {row.id} scheduler"
     scheduled = bool(config and config.get("enabled"))
+    timezone = (
+        config.get("timezone") or LEGACY_SCHEDULE_TIMEZONE
+        if config
+        else LEGACY_SCHEDULE_TIMEZONE
+    )
 
     day_of_week = _cron_days(config.get("days"), f"{label}.days") if scheduled else None
 
@@ -305,6 +310,7 @@ def _planned_jobs(row: store.SmStrategy) -> list[dict[str, Any]]:
                 "day_of_week": _WEEKDAYS,
                 "hour": exit_at[0],
                 "minute": exit_at[1],
+                "timezone": LEGACY_SCHEDULE_TIMEZONE,
             }
         ]
 
@@ -320,6 +326,7 @@ def _planned_jobs(row: store.SmStrategy) -> list[dict[str, Any]]:
                 "day_of_week": day_of_week,
                 "hour": start_at[0],
                 "minute": start_at[1],
+                "timezone": timezone,
             }
         )
 
@@ -346,6 +353,7 @@ def _planned_jobs(row: store.SmStrategy) -> list[dict[str, Any]]:
                 "day_of_week": day_of_week,
                 "hour": stop_at[0],
                 "minute": stop_at[1],
+                "timezone": timezone if stop_source == "scheduler.auto_stop_time" else LEGACY_SCHEDULE_TIMEZONE,
             }
         )
 
@@ -401,7 +409,7 @@ def sync_strategy_jobs(strategy_id: int) -> list[str]:
                     hour=job["hour"],
                     minute=job["minute"],
                     # Explicit, every time. See the module docstring.
-                    timezone=IST,
+                    timezone=job.get("timezone") or APP_TIMEZONE,
                 ),
                 # A module-level callable and plain arguments, never a closure.
                 args=[strategy_id],
@@ -411,11 +419,12 @@ def sync_strategy_jobs(strategy_id: int) -> list[str]:
             )
             installed.append(job["job_id"])
             logger.info(
-                "Scheduled %s on %s at %02d:%02d IST",
+                "Scheduled %s on %s at %02d:%02d %s",
                 job["job_id"],
                 job["day_of_week"],
                 job["hour"],
                 job["minute"],
+                job.get("timezone") or APP_TIMEZONE,
             )
         except Exception:
             logger.exception("Could not install scheduler job %s", job["job_id"])

@@ -31,6 +31,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import type { AlertFire, AlertsView } from '@/lib/trading/terminal'
+import { formatAppDate, formatAppTime } from '@/lib/dateTime'
 import { cn } from '@/lib/utils'
 import { PANEL_HEADER, PanelShell } from './panelShell'
 
@@ -135,13 +136,10 @@ function firedText(seconds: number): string {
   const when = new Date(seconds * 1000)
   if (Number.isNaN(when.getTime())) return ''
   const today = new Date()
-  const sameDay =
-    when.getFullYear() === today.getFullYear() &&
-    when.getMonth() === today.getMonth() &&
-    when.getDate() === today.getDate()
-  const time = when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+  const sameDay = formatAppDate(when) === formatAppDate(today)
+  const time = formatAppTime(when)
   if (sameDay) return time
-  const date = when.toLocaleDateString([], { day: '2-digit', month: 'short' })
+  const date = formatAppDate(when, { day: '2-digit', month: 'short' })
   return `${date} ${time}`
 }
 

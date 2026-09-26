@@ -83,6 +83,7 @@ def get_history_with_auth(
     interval: str,
     start_date: str,
     end_date: str,
+    category: str | None = None,
 ) -> tuple[bool, dict[str, Any], int]:
     """
     Get historical data for a symbol using provided auth tokens.
@@ -104,6 +105,15 @@ def get_history_with_auth(
         - HTTP status code (int)
     """
     # Validate symbol and exchange before making broker API call
+    if category is not None and broker != "bybit":
+        return False, {"status": "error", "message": "category is only supported for Bybit"}, 400
+    if broker == "bybit" and category == "option":
+        return (
+            False,
+            {"status": "error", "message": "Bybit options do not provide historical klines"},
+            400,
+        )
+
     is_valid, error_msg = validate_symbol_exchange(symbol, exchange)
     if not is_valid:
         return False, {"status": "error", "message": error_msg}, 400
@@ -126,7 +136,12 @@ def get_history_with_auth(
             data_handler = broker_module.BrokerData(auth_token)
 
         # Call the broker's get_history method
-        df = data_handler.get_history(symbol, exchange, interval, start_date, end_date)
+        if broker == "bybit":
+            df = data_handler.get_history(
+                symbol, exchange, interval, start_date, end_date, category=category
+            )
+        else:
+            df = data_handler.get_history(symbol, exchange, interval, start_date, end_date)
 
         if not isinstance(df, pd.DataFrame):
             raise ValueError("Invalid data format returned from broker")
@@ -227,6 +242,7 @@ def get_history(
     feed_token: str | None = None,
     broker: str | None = None,
     source: str = "api",
+    category: str | None = None,
 ) -> tuple[bool, dict[str, Any], int]:
     """
     Get historical data for a symbol.
@@ -259,6 +275,12 @@ def get_history(
             {"status": "error", "message": "Source must be either 'api' or 'db'."},
             400,
         )
+    if category is not None and source == "db":
+        return (
+            False,
+            {"status": "error", "message": "category is only supported for broker API history"},
+            400,
+        )
 
     # Source: 'db' - Fetch from DuckDB/Historify database
     if source == "db":
@@ -281,14 +303,45 @@ def get_history(
         )
         if AUTH_TOKEN is None:
             return False, {"status": "error", "message": "Invalid openalgo apikey"}, 403
+        if category is None:
+            return get_history_with_auth(
+                AUTH_TOKEN,
+                FEED_TOKEN,
+                broker_name,
+                symbol,
+                exchange,
+                interval,
+                start_date,
+                end_date,
+            )
         return get_history_with_auth(
-            AUTH_TOKEN, FEED_TOKEN, broker_name, symbol, exchange, interval, start_date, end_date
+            AUTH_TOKEN,
+            FEED_TOKEN,
+            broker_name,
+            symbol,
+            exchange,
+            interval,
+            start_date,
+            end_date,
+            category,
         )
 
     # Case 2: Direct internal call with auth_token and broker
     elif auth_token and broker:
+        if category is None:
+            return get_history_with_auth(
+                auth_token, feed_token, broker, symbol, exchange, interval, start_date, end_date
+            )
         return get_history_with_auth(
-            auth_token, feed_token, broker, symbol, exchange, interval, start_date, end_date
+            auth_token,
+            feed_token,
+            broker,
+            symbol,
+            exchange,
+            interval,
+            start_date,
+            end_date,
+            category,
         )
 
     # Case 3: Invalid parameters

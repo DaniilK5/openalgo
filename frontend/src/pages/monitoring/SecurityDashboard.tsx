@@ -49,6 +49,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { formatAppDateTime } from '@/lib/dateTime'
 import { showToast } from '@/utils/toast'
 
 interface SecuritySettings {
@@ -596,7 +597,8 @@ export default function SecurityDashboard() {
           </h1>
         </div>
         <p className="text-muted-foreground">
-          Monitor and manage IP bans, suspicious activity, and security settings
+          Monitor and manage IP bans, suspicious activity, and security settings. Timestamps are
+          shown in Asia/Almaty.
         </p>
       </div>
 
@@ -1305,9 +1307,7 @@ export default function SecurityDashboard() {
                         <TableRow key={idx}>
                           <TableCell className="text-xs whitespace-nowrap">
                             {attempt.timestamp
-                              ? new Date(attempt.timestamp).toLocaleString('en-IN', {
-                                  timeZone: 'Asia/Kolkata',
-                                })
+                              ? formatAppDateTime(attempt.timestamp)
                               : '-'}
                           </TableCell>
                           <TableCell>
@@ -1397,9 +1397,7 @@ export default function SecurityDashboard() {
                         <TableRow key={s.session_id}>
                           <TableCell className="text-xs whitespace-nowrap">
                             {s.login_time
-                              ? new Date(s.login_time).toLocaleString('en-IN', {
-                                  timeZone: 'Asia/Kolkata',
-                                })
+                              ? formatAppDateTime(s.login_time)
                               : '-'}
                           </TableCell>
                           <TableCell className="font-mono text-sm">{s.ip_address || '-'}</TableCell>
@@ -1414,9 +1412,7 @@ export default function SecurityDashboard() {
                           </TableCell>
                           <TableCell className="text-xs whitespace-nowrap">
                             {s.last_seen
-                              ? new Date(s.last_seen).toLocaleString('en-IN', {
-                                  timeZone: 'Asia/Kolkata',
-                                })
+                              ? formatAppDateTime(s.last_seen)
                               : '-'}
                           </TableCell>
                           <TableCell>

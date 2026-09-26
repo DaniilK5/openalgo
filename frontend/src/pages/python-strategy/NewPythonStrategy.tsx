@@ -9,6 +9,11 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useStrategyExchanges } from '@/hooks/useStrategyExchanges'
+import {
+  APP_TIME_ZONE,
+  convertScheduleTime,
+  LEGACY_SCHEDULE_TIME_ZONE,
+} from '@/lib/dateTime'
 import { CRYPTO_EXCHANGE_VALUE, SCHEDULE_DAYS } from '@/types/python-strategy'
 import { showToast } from '@/utils/toast'
 
@@ -62,9 +67,9 @@ export default function NewPythonStrategy() {
   // Exchange drives the holiday/session calendar
   const [exchange, setExchange] = useState<string>('NSE')
 
-  // Schedule fields with defaults (Mon-Fri, 9:00 AM - 4:00 PM IST)
-  const [startTime, setStartTime] = useState('09:00')
-  const [stopTime, setStopTime] = useState('16:00')
+  // Preserve the old 09:00-16:00 India-time defaults, displayed in Almaty.
+  const [startTime, setStartTime] = useState('08:30')
+  const [stopTime, setStopTime] = useState('15:30')
   const [selectedDays, setSelectedDays] = useState<string[]>(['mon', 'tue', 'wed', 'thu', 'fri'])
 
   const { exchanges, getWindow } = useStrategyExchanges()
@@ -78,8 +83,8 @@ export default function NewPythonStrategy() {
     setExchange(value)
     const session = getWindow(value)
     if (session) {
-      setStartTime(session.start)
-      setStopTime(session.stop)
+      setStartTime(convertScheduleTime(session.start, LEGACY_SCHEDULE_TIME_ZONE))
+      setStopTime(convertScheduleTime(session.stop, LEGACY_SCHEDULE_TIME_ZONE))
     }
     setSelectedDays(
       value === CRYPTO_EXCHANGE_VALUE
@@ -304,13 +309,13 @@ export default function NewPythonStrategy() {
               <p className="text-sm text-muted-foreground">
                 {isCrypto
                   ? 'CRYPTO runs 24/7. The schedule below limits when this script is allowed to run.'
-                  : 'Configure when this strategy should run. All times are in IST.'}
+                  : `Configure when this strategy should run. Schedule times are in ${APP_TIME_ZONE}.`}
               </p>
 
               {/* Time Inputs */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="startTime">Start Time (IST)</Label>
+                  <Label htmlFor="startTime">Start Time (Asia/Almaty)</Label>
                   <Input
                     id="startTime"
                     type="time"
@@ -321,7 +326,7 @@ export default function NewPythonStrategy() {
                   {errors.startTime && <p className="text-sm text-red-500">{errors.startTime}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="stopTime">Stop Time (IST)</Label>
+                  <Label htmlFor="stopTime">Stop Time (Asia/Almaty)</Label>
                   <Input
                     id="stopTime"
                     type="time"

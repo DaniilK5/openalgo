@@ -57,6 +57,7 @@ curl -X POST http://127.0.0.1:5000/api/v1/quotes \
 | apikey | Your OpenAlgo API key | Mandatory | - |
 | symbol | Trading symbol | Mandatory | - |
 | exchange | Exchange code: NSE, BSE, NFO, BFO, CDS, BCD, MCX | Mandatory | - |
+| category | Bybit product category: `spot`, `linear`, `inverse`, or `option` | Optional | `linear` for Bybit |
 
 ## Response Fields
 
@@ -77,10 +78,12 @@ curl -X POST http://127.0.0.1:5000/api/v1/quotes \
 | bid | number | Best bid price |
 | prev_close | number | Previous day's close price |
 | volume | number | Total traded volume |
+| category | string | Bybit product category, when using Bybit |
 
 ## Notes
 
 - Quotes are **real-time** and refresh with each trade
+- For Bybit, `category` selects the product market; omit it to use `linear`
 - For **F&O symbols**, use the OpenAlgo standard format (e.g., NIFTY25AUG26FUT)
 - For **multiple symbols**, use the [MultiQuotes](./multiquotes.md) endpoint
 - The **bid/ask** spread indicates liquidity

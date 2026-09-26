@@ -44,6 +44,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import type { ChartinkStrategy, ChartinkSymbolMapping, SymbolSearchResult } from '@/types/chartink'
 import { CHARTINK_EXCHANGES, CHARTINK_PRODUCTS } from '@/types/chartink'
+import { formatAppDate } from '@/lib/dateTime'
 import { showToast } from '@/utils/toast'
 
 export default function ConfigureChartinkSymbols() {
@@ -496,7 +497,7 @@ export default function ConfigureChartinkSymbols() {
                       <Badge variant="secondary">{mapping.product_type}</Badge>
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground text-sm">
-                      {new Date(mapping.created_at).toLocaleDateString()}
+                      {formatAppDate(mapping.created_at)}
                     </TableCell>
                     <TableCell>
                       <Button

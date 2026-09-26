@@ -17,7 +17,7 @@ import {
   derivativeExchangeFor,
   favorablePeakPoints,
   filterStrikes,
-  formatIst,
+  formatAppTimestamp,
   formatListPnl,
   formatPnl,
   freshSignalLeg,
@@ -299,26 +299,24 @@ describe('P&L formatting', () => {
 })
 
 describe('IST rendering', () => {
-  // The API sends UTC with an explicit offset. 03:45 UTC is 09:15 IST, and it
-  // has to read as 09:15 whatever zone the browser is set to.
-  it('converts a UTC timestamp to IST and says so', () => {
-    const rendered = formatIst('2026-04-12T03:45:00+00:00')
-    expect(rendered).toContain('09:15')
+  // The API sends UTC with an explicit offset. 03:45 UTC is 08:45 in Almaty.
+  it('converts a UTC timestamp to the application timezone', () => {
+    const rendered = formatAppTimestamp('2026-04-12T03:45:00+00:00')
+    expect(rendered).toContain('08:45')
     expect(rendered).toContain('Apr')
     expect(rendered).toContain('2026')
-    expect(rendered.endsWith('IST')).toBe(true)
+    expect(rendered).not.toContain('IST')
   })
 
-  it('drops the seconds and shortens the year for the list', () => {
-    const rendered = formatIst('2026-04-12T03:45:09+00:00', false)
-    expect(rendered).toContain('09:15')
+  it('drops the seconds for the list', () => {
+    const rendered = formatAppTimestamp('2026-04-12T03:45:09+00:00', false)
+    expect(rendered).toContain('08:45')
     expect(rendered).not.toContain(':09')
-    expect(rendered.endsWith('IST')).toBe(true)
   })
 
   it('renders a missing timestamp as an em dash', () => {
-    expect(formatIst(null)).toBe('—')
-    expect(formatIst(undefined)).toBe('—')
+    expect(formatAppTimestamp(null)).toBe('—')
+    expect(formatAppTimestamp(undefined)).toBe('—')
   })
 })
 

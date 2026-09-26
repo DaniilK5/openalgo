@@ -8,6 +8,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useStrategyExchanges } from '@/hooks/useStrategyExchanges'
+import {
+  APP_TIME_ZONE,
+  convertScheduleTime,
+  convertWeeklySchedule,
+  LEGACY_SCHEDULE_TIME_ZONE,
+} from '@/lib/dateTime'
 import type { PythonStrategy } from '@/types/python-strategy'
 import { CRYPTO_EXCHANGE_VALUE, SCHEDULE_DAYS } from '@/types/python-strategy'
 import { showToast } from '@/utils/toast'
@@ -19,8 +25,8 @@ export default function SchedulePythonStrategy() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [exchange, setExchange] = useState<string>('NSE')
-  const [startTime, setStartTime] = useState('09:15')
-  const [stopTime, setStopTime] = useState('15:30')
+  const [startTime, setStartTime] = useState('08:45')
+  const [stopTime, setStopTime] = useState('15:00')
   const [selectedDays, setSelectedDays] = useState<string[]>(['mon', 'tue', 'wed', 'thu', 'fri'])
 
   const { exchanges, getWindow } = useStrategyExchanges()
@@ -36,9 +42,19 @@ export default function SchedulePythonStrategy() {
         setStrategy(data)
         // Pre-fill with existing schedule (schedule is always enabled)
         if (data.exchange) setExchange(data.exchange)
-        if (data.schedule_start_time) setStartTime(data.schedule_start_time)
-        if (data.schedule_stop_time) setStopTime(data.schedule_stop_time)
-        if (data.schedule_days?.length) setSelectedDays(data.schedule_days)
+        const scheduleTimezone = data.schedule_timezone ?? LEGACY_SCHEDULE_TIME_ZONE
+        if (data.schedule_start_time) {
+          const converted = convertWeeklySchedule(
+            data.schedule_start_time,
+            data.schedule_days ?? [],
+            scheduleTimezone
+          )
+          setStartTime(converted.time)
+          if (converted.days.length) setSelectedDays(converted.days)
+        }
+        if (data.schedule_stop_time) {
+          setStopTime(convertScheduleTime(data.schedule_stop_time, scheduleTimezone))
+        }
       } catch (_error) {
         showToast.error('Failed to load strategy', 'pythonStrategy')
         navigate('/python')
@@ -77,6 +93,7 @@ export default function SchedulePythonStrategy() {
         stop_time: stopTime,
         days: selectedDays,
         exchange,
+        timezone: APP_TIME_ZONE,
       })
 
       if (response.status === 'success') {
@@ -150,7 +167,7 @@ export default function SchedulePythonStrategy() {
             Schedule Settings
           </CardTitle>
           <CardDescription>
-            Set when the strategy should automatically start and stop (IST)
+            Set when the strategy should automatically start and stop (Asia/Almaty)
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -183,7 +200,7 @@ export default function SchedulePythonStrategy() {
                 <div className="space-y-2">
                   <Label htmlFor="start_time" className="flex items-center gap-2">
                     <Clock className="h-4 w-4" />
-                    Start Time (IST)
+                    Start Time (Asia/Almaty)
                   </Label>
                   <Input
                     id="start_time"
@@ -196,7 +213,7 @@ export default function SchedulePythonStrategy() {
                 <div className="space-y-2">
                   <Label htmlFor="stop_time" className="flex items-center gap-2">
                     <Clock className="h-4 w-4" />
-                    Stop Time (IST)
+                    Stop Time (Asia/Almaty)
                   </Label>
                   <Input
                     id="stop_time"

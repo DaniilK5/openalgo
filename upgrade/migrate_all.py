@@ -73,10 +73,13 @@ MIGRATIONS = [
     # Feature migrations
     ("migrate_historify.py", "Historify DuckDB Setup"),
     ("migrate_historify_scheduler.py", "Historify Scheduler Tables"),
+    ("migrate_historify_schedule_timezone.py", "Historify Schedule Timezones"),
     ("migrate_flow.py", "Flow Workflow Automation"),
     ("migrate_health_process_details.py", "Health Metrics Process Details"),
     ("migrate_master_contract_stats.py", "Master Contract Smart Download"),
     ("migrate_contract_value.py", "Contract Value Column for Crypto"),
+    ("migrate_bybit_instrument_metadata.py", "Bybit Category and Quantity Metadata"),
+    ("migrate_bybit_scalping_inventory.py", "Bybit Scalping Spot Inventory Ledger"),
     ("migrate_market_holidays.py", "2026 Market Holiday Calendar Update"),
     ("migrate_leverage.py", "Leverage Configuration for Crypto"),
     ("migrate_samco_auth.py", "Samco 2FA Authentication"),
@@ -98,7 +101,15 @@ MIGRATIONS = [
 # required schema migrations are listed explicitly: their failure must reach
 # this runner's summary and process exit code instead of being reported as a
 # successful warning.
-REQUIRED_MIGRATIONS = frozenset({"migrate_strategy_module.py", "migrate_strategy_universe_tab.py"})
+REQUIRED_MIGRATIONS = frozenset(
+    {
+        "migrate_strategy_module.py",
+        "migrate_strategy_universe_tab.py",
+        "migrate_bybit_instrument_metadata.py",
+        "migrate_bybit_scalping_inventory.py",
+        "migrate_historify_schedule_timezone.py",
+    }
+)
 
 
 def run_migration(script_name, description):

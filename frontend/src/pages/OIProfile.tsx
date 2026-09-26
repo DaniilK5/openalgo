@@ -377,7 +377,7 @@ export default function OIProfile() {
         ]
       : []
 
-    const annotations: Partial<PlotlyTypes.Annotations>[] = atmStrike
+    const annotations: Partial<PlotlyTypes.Annotation>[] = atmStrike
       ? [
           {
             x: 0,

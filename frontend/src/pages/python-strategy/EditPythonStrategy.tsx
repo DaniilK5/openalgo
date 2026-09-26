@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { PythonEditor } from '@/components/ui/python-editor'
 import { Skeleton } from '@/components/ui/skeleton'
+import { formatAppDateTime } from '@/lib/dateTime'
 import type { PythonStrategy, PythonStrategyContent } from '@/types/python-strategy'
 import { showToast } from '@/utils/toast'
 
@@ -293,7 +294,7 @@ export default function EditPythonStrategy() {
         {content.last_modified && (
           <>
             <span>•</span>
-            <span>Last modified: {new Date(content.last_modified).toLocaleString()}</span>
+            <span>Last modified: {formatAppDateTime(content.last_modified)}</span>
           </>
         )}
       </div>

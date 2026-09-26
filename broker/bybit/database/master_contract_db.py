@@ -1,15 +1,16 @@
 import os
 import re
+from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 
 import pandas as pd
 from sqlalchemy import Column, Float, Index, Integer, Sequence, String, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import scoped_session, sessionmaker
 
-from broker.bybit.api.baseurl import get_url
+from broker.bybit.api.rest_client import request
 from database.engine_factory import create_db_engine
 from extensions import socketio
-from utils.httpx_client import get_httpx_client
 from utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -36,6 +37,18 @@ class SymToken(Base):
     instrumenttype = Column(String)
     tick_size = Column(Float)
     contract_value = Column(Float, default=1.0)
+    category = Column(String(16))
+    qty_step = Column(Float)
+    min_qty = Column(Float)
+    max_qty = Column(Float)
+    base_precision = Column(Float)
+    quote_precision = Column(Float)
+    min_order_amt = Column(Float)
+    max_market_qty = Column(Float)
+    max_limit_qty = Column(Float)
+    base_coin = Column(String(20))
+    quote_coin = Column(String(20))
+    settle_coin = Column(String(20))
     __table_args__ = (Index("idx_symbol_exchange", "symbol", "exchange"),)
 
 
@@ -46,10 +59,27 @@ def init_db():
 
         insp = sa_inspect(engine)
         columns = {col["name"] for col in insp.get_columns("symtoken")}
-        if "contract_value" not in columns:
-            with engine.connect() as conn:
-                conn.execute(text("ALTER TABLE symtoken ADD COLUMN contract_value REAL DEFAULT 1.0"))
-                conn.commit()
+        missing_columns = {
+            "contract_value": "REAL DEFAULT 1.0",
+            "category": "VARCHAR(16)",
+            "qty_step": "REAL",
+            "min_qty": "REAL",
+            "max_qty": "REAL",
+            "base_precision": "REAL",
+            "quote_precision": "REAL",
+            "min_order_amt": "REAL",
+            "max_market_qty": "REAL",
+            "max_limit_qty": "REAL",
+            "base_coin": "VARCHAR(20)",
+            "quote_coin": "VARCHAR(20)",
+            "settle_coin": "VARCHAR(20)",
+        }
+        with engine.begin() as conn:
+            for column, column_type in missing_columns.items():
+                if column not in columns:
+                    conn.execute(
+                        text(f"ALTER TABLE symtoken ADD COLUMN {column} {column_type}")
+                    )
     except Exception as exc:  # pragma: no cover - migration-path guard
         logger.warning("Could not migrate symtoken contract_value: %s", exc)
 
@@ -78,14 +108,6 @@ def copy_from_dataframe(df):
     return len(filtered)
 
 
-def _to_expiry_string(symbol: str):
-    match = re.search(r"-(\d{2})([A-Z]{3})(\d{2})$", symbol, re.IGNORECASE)
-    if not match:
-        return ""
-    day, month, year = match.groups()
-    return f"{day}-{month.upper()}-{year}"
-
-
 def _parse_decimal(value, default=0.0):
     if value in (None, ""):
         return default
@@ -102,49 +124,187 @@ def _parse_lot_size(value):
     return int(parsed) if float(parsed).is_integer() else 1
 
 
-def _build_linear_symbol(item):
-    contract_type = item.get("contractType")
+def _optional_decimal(value):
+    if value in (None, ""):
+        return None
+    try:
+        parsed = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid Bybit instrument number: {value}") from exc
+    if not parsed.is_finite():
+        raise ValueError(f"Invalid Bybit instrument number: {value}")
+    return float(parsed)
+
+
+def _expiry_from_delivery_time(value):
+    delivery_ms = _optional_decimal(value)
+    if delivery_ms is None or delivery_ms <= 0:
+        return ""
+    return datetime.fromtimestamp(float(delivery_ms) / 1000, timezone.utc).strftime(
+        "%d-%b-%y"
+    ).upper()
+
+
+def _build_instrument(item, category):
     base_coin = str(item.get("baseCoin") or "").upper()
     quote_coin = str(item.get("quoteCoin") or "").upper()
+    settle_coin = str(item.get("settleCoin") or "").upper()
     native_symbol = str(item.get("symbol") or "").upper()
+    symbol_id = str(item.get("symbolId") or "").strip()
+    price_filter = item.get("priceFilter") or {}
+    lot_filter = item.get("lotSizeFilter") or {}
+    tick_size = _optional_decimal(price_filter.get("tickSize"))
 
-    if contract_type == "LinearPerpetual":
-        symbol = f"{base_coin}{quote_coin}FUT"
-        expiry = ""
-        instrumenttype = "PERPFUT"
+    if not base_coin or not quote_coin or not native_symbol or not symbol_id or not tick_size:
+        return None
+
+    expiry = _expiry_from_delivery_time(item.get("deliveryTime"))
+    strike = 0.0
+    instrumenttype = ""
+    lot_size = 1
+    category = category.lower()
+
+    if category == "spot":
+        symbol = native_symbol
+        instrumenttype = "SPOT"
         name = base_coin
-    elif contract_type == "LinearFutures":
-        expiry = _to_expiry_string(native_symbol)
-        if not expiry:
+        base_precision = _optional_decimal(lot_filter.get("basePrecision"))
+        quote_precision = _optional_decimal(lot_filter.get("quotePrecision"))
+        qty_step = None
+        min_qty = _optional_decimal(lot_filter.get("minOrderQty"))
+        max_qty = _optional_decimal(lot_filter.get("maxOrderQty"))
+        min_order_amt = _optional_decimal(lot_filter.get("minOrderAmt"))
+        max_market_qty = _optional_decimal(lot_filter.get("maxMarketOrderQty"))
+        max_limit_qty = _optional_decimal(lot_filter.get("maxLimitOrderQty"))
+    elif category in {"linear", "inverse"}:
+        contract_type = item.get("contractType")
+        if contract_type in {"LinearPerpetual", "InversePerpetual"}:
+            symbol = f"{base_coin}{quote_coin}FUT"
+            instrumenttype = "PERPFUT"
             expiry = ""
-        symbol = f"{base_coin}{expiry.replace('-', '').upper()}FUT" if expiry else f"{base_coin}FUT"
-        instrumenttype = "FUT"
+        elif contract_type in {"LinearFutures", "InverseFutures"} and expiry:
+            prefix = base_coin if category == "linear" and quote_coin == "USDT" else f"{base_coin}{quote_coin}"
+            symbol = f"{prefix}{expiry.replace('-', '')}FUT"
+            instrumenttype = "FUT"
+        else:
+            return None
         name = base_coin
+        qty_step = _optional_decimal(lot_filter.get("qtyStep"))
+        min_qty = _optional_decimal(lot_filter.get("minOrderQty"))
+        max_qty = _optional_decimal(lot_filter.get("maxOrderQty"))
+        max_market_qty = _optional_decimal(
+            lot_filter.get("maxMktOrderQty") or lot_filter.get("maxMarketOrderQty")
+        )
+        max_limit_qty = max_qty
+        base_precision = None
+        quote_precision = None
+        min_order_amt = _optional_decimal(lot_filter.get("minNotionalValue"))
+        lot_size = _parse_lot_size(qty_step)
+    elif category == "option":
+        match = re.fullmatch(
+            r"([A-Z0-9]+)-(\d{2}[A-Z]{3}\d{2})-([0-9]+(?:\.[0-9]+)?)-([CP])-([A-Z0-9]+)",
+            native_symbol,
+        )
+        option_type = str(item.get("optionsType") or "").lower()
+        if not match or option_type not in {"call", "put"} or not expiry:
+            return None
+        _, symbol_expiry, strike_text, native_side, _ = match.groups()
+        symbol_expiry_date = datetime.strptime(symbol_expiry, "%d%b%y").date()
+        delivery_date = datetime.strptime(expiry, "%d-%b-%y").date()
+        expected_side = "C" if option_type == "call" else "P"
+        if symbol_expiry_date != delivery_date or native_side != expected_side:
+            return None
+        strike_decimal = Decimal(strike_text)
+        if strike_decimal <= 0:
+            return None
+        strike = float(strike_decimal)
+        option_suffix = "CE" if option_type == "call" else "PE"
+        symbol = (
+            f"{base_coin}{quote_coin}{symbol_expiry}"
+            f"{format(strike_decimal.normalize(), 'f')}{option_suffix}"
+        )
+        instrumenttype = option_suffix
+        name = base_coin
+        qty_step = _optional_decimal(lot_filter.get("qtyStep"))
+        min_qty = _optional_decimal(lot_filter.get("minOrderQty"))
+        max_qty = _optional_decimal(lot_filter.get("maxOrderQty"))
+        max_market_qty = None
+        max_limit_qty = max_qty
+        base_precision = None
+        quote_precision = None
+        min_order_amt = None
+        lot_size = _parse_lot_size(qty_step)
     else:
         return None
 
-    if not symbol:
-        return None
-
-    price_filter = item.get("priceFilter") or {}
-    lot_filter = item.get("lotSizeFilter") or {}
-    tick_size = _parse_decimal(price_filter.get("tickSize"), 0.0)
-    lot_size = _parse_lot_size(lot_filter.get("qtyStep"))
     result = {
         "symbol": symbol,
         "brsymbol": native_symbol,
         "name": name,
         "exchange": "CRYPTO",
         "brexchange": "bybit",
-        "token": native_symbol,
+        "token": f"{category}:{symbol_id}",
         "expiry": expiry,
-        "strike": 0.0,
+        "strike": strike,
         "lotsize": lot_size,
         "instrumenttype": instrumenttype,
         "tick_size": tick_size,
         "contract_value": 1.0,
+        "category": category,
+        "qty_step": qty_step,
+        "min_qty": min_qty,
+        "max_qty": max_qty,
+        "base_precision": base_precision,
+        "quote_precision": quote_precision,
+        "min_order_amt": min_order_amt,
+        "max_market_qty": max_market_qty,
+        "max_limit_qty": max_limit_qty,
+        "base_coin": base_coin,
+        "quote_coin": quote_coin,
+        "settle_coin": settle_coin or None,
     }
     return result
+
+
+def _fetch_category_items(category):
+    cursor = ""
+    page_count = 0
+    items = []
+
+    while True:
+        params = {"category": category}
+        if category != "spot":
+            params["limit"] = 1000
+            if category == "option":
+                params["baseCoin"] = "All"
+            if cursor:
+                params["cursor"] = cursor
+
+        payload = request("/v5/market/instruments-info", params=params)
+
+        result = payload.get("result") or {}
+        if not isinstance(result, dict) or not isinstance(result.get("list"), list):
+            raise ValueError(f"Bybit {category} instrument response is malformed")
+        items.extend(result["list"])
+
+        next_cursor = result.get("nextPageCursor") or ""
+        if category == "spot" or not next_cursor:
+            break
+        page_count += 1
+        if page_count >= 50:
+            raise ValueError(f"Bybit {category} instrument pagination exceeded 50 pages")
+        cursor = next_cursor
+
+    return items
+
+
+def _status_supported(category, item):
+    status = str(item.get("status") or "").lower()
+    if category == "spot":
+        return status == "trading"
+    if category in {"linear", "inverse"}:
+        return status in {"trading", "pendingopen"}
+    return status in {"prelaunch", "trading", "delivering"}
 
 
 def _emit_master_contract_status(status, broker="bybit", **payload):
@@ -159,48 +319,36 @@ def _emit_master_contract_status(status, broker="bybit", **payload):
 
 
 def master_contract_download():
-    """Download the live Bybit linear perpetual/futures contract set.
-
-    Scope for v1: Unified Account mainnet, linear perpetuals/futures only.
-    This skips spot, inverse and options until a later phase uses them.
-    """
+    """Download and atomically replace the Bybit Spot, Linear, Inverse, and Option master."""
     logger.info("Bybit master_contract_download requested")
     _emit_master_contract_status("pending")
 
     rows = []
-    next_cursor = ""
-    page_count = 0
-
     try:
-        while page_count < 50:
-            params = {"category": "linear", "limit": 1000}
-            if next_cursor:
-                params["cursor"] = next_cursor
+        for category in ("spot", "linear", "inverse", "option"):
+            _emit_master_contract_status("downloading", category=category)
+            items = _fetch_category_items(category)
+            if not items:
+                raise ValueError(
+                    f"Bybit returned no instruments for {category}; existing symbols were kept"
+                )
 
-            response = get_httpx_client().get(get_url("/v5/market/instruments-info"), params=params, timeout=60.0)
-            if response.status_code != 200:
-                raise ValueError(f"Bybit master contract fetch failed: HTTP {response.status_code}")
-
-            payload = response.json() if response.content else {}
-            if payload.get("retCode") != 0:
-                raise ValueError(f"Bybit master contract fetch failed: {payload.get('retMsg', 'unknown error')}")
-
-            result = payload.get("result") or {}
-            items = result.get("list") or []
+            category_rows = []
             for item in items:
-                if (item.get("status") or "").lower() != "trading":
+                if not isinstance(item, dict) or not _status_supported(category, item):
                     continue
-                contract_type = item.get("contractType")
-                if contract_type not in {"LinearPerpetual", "LinearFutures"}:
-                    continue
-                canonical = _build_linear_symbol(item)
+                canonical = _build_instrument(item, category)
                 if canonical:
-                    rows.append(canonical)
+                    category_rows.append(canonical)
+            if not category_rows:
+                raise ValueError(
+                    f"Bybit returned no supported {category} instruments; existing symbols were kept"
+                )
+            rows.extend(category_rows)
 
-            next_cursor = result.get("nextPageCursor") or ""
-            page_count += 1
-            if not next_cursor:
-                break
+        symbols = [(row["symbol"], row["exchange"]) for row in rows]
+        if len(symbols) != len(set(symbols)):
+            raise ValueError("Bybit instrument master contains duplicate OpenAlgo symbols")
 
         df = pd.DataFrame(rows)
         if df.empty:

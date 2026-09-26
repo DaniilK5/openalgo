@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { showToast } from '@/utils/toast'
+import { formatAppTime } from '@/lib/dateTime'
 
 async function fetchCSRFToken(): Promise<string> {
   const response = await fetch('/auth/csrf-token', { credentials: 'include' })
@@ -149,7 +150,7 @@ export default function WebSocketOrder() {
 
   // Logging
   const logEvent = useCallback((message: string, type: LogEntry['type'] = 'info') => {
-    const timestamp = new Date().toLocaleTimeString('en-IN', { hour12: false })
+    const timestamp = formatAppTime(new Date(), { second: '2-digit' })
     setLogs((prev) => [...prev.slice(-199), { timestamp, message, type }])
   }, [])
 
@@ -584,7 +585,7 @@ export default function WebSocketOrder() {
                         className="border-b border-border/30 last:border-0"
                       >
                         <td className="py-2 pr-3 text-muted-foreground font-mono">
-                          {new Date(u.receivedAt).toLocaleTimeString('en-IN', { hour12: false })}
+                          {formatAppTime(u.receivedAt, { second: '2-digit' })}
                         </td>
                         <td className="py-2 pr-3 font-mono text-foreground/80">{u.orderid}</td>
                         <td className="py-2 pr-3 font-semibold text-foreground">

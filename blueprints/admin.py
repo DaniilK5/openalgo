@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -29,6 +29,7 @@ from database.qty_freeze_db import db_session as freeze_db_session
 from limiter import limiter
 from utils.logging import get_logger
 from utils.session import check_session_validity
+from utils.timezones import APP_TIMEZONE, format_app_datetime
 
 logger = get_logger(__name__)
 
@@ -1441,21 +1442,26 @@ def _trading_mode():
 
 
 def _server_time_info():
-    """Server local time + IST + timezone label."""
+    """Server, application, and Indian exchange timezone information."""
     try:
         from zoneinfo import ZoneInfo
 
         now_local = datetime.now()
+        now_app = datetime.now(tz=ZoneInfo(APP_TIMEZONE))
         now_ist = datetime.now(tz=ZoneInfo("Asia/Kolkata"))
         return {
             "server_time": now_local.strftime("%Y-%m-%d %H:%M:%S"),
             "server_tz": str(now_local.astimezone().tzinfo),
+            "app_time": now_app.strftime("%Y-%m-%d %H:%M:%S %Z"),
+            "app_timezone": APP_TIMEZONE,
             "ist_time": now_ist.strftime("%Y-%m-%d %H:%M:%S %Z"),
         }
     except Exception:
         return {
             "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "server_tz": None,
+            "app_time": None,
+            "app_timezone": APP_TIMEZONE,
             "ist_time": None,
         }
 
@@ -1689,7 +1695,9 @@ def api_system_diagnostics():
         resp = jsonify(
             {
                 "status": "success",
-                "ran_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "ran_at": format_app_datetime(
+                    datetime.now(UTC), format_string="%Y-%m-%d %H:%M:%S"
+                ),
                 "checks": checks,
             }
         )

@@ -30,9 +30,10 @@ class Intervals(Resource):
             intervals_data = intervals_schema.load(request.json)
 
             api_key = intervals_data["apikey"]
+            category = intervals_data.get("category")
 
             # Call the service function to get intervals data with API key
-            success, response_data, status_code = get_intervals(api_key=api_key)
+            success, response_data, status_code = get_intervals(api_key=api_key, category=category)
 
             return make_response(jsonify(response_data), status_code)
 

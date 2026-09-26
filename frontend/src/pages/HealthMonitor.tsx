@@ -59,6 +59,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { APP_TIME_ZONE, formatAppDateTime, formatAppTime } from '@/lib/dateTime'
 import { cn } from '@/lib/utils'
 import { showToast } from '@/utils/toast'
 
@@ -119,28 +120,6 @@ function StatusIcon({ status }: { status: 'pass' | 'warn' | 'fail' | 'unknown' }
   if (status === 'warn') return <AlertCircle className="h-4 w-4 text-yellow-500" />
   if (status === 'fail') return <XCircle className="h-4 w-4 text-red-500" />
   return <WifiOff className="h-4 w-4 text-muted-foreground" />
-}
-
-const IST_TIME_ZONE = 'Asia/Kolkata'
-
-function formatIstDateTime(timestamp: string, options?: Intl.DateTimeFormatOptions): string {
-  const date = new Date(timestamp)
-  if (Number.isNaN(date.getTime())) return '-'
-  return new Intl.DateTimeFormat('en-IN', {
-    timeZone: IST_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: true,
-    ...options,
-  }).format(date)
-}
-
-function formatIstTime(timestamp: string): string {
-  return formatIstDateTime(timestamp, { year: undefined, month: undefined, day: undefined })
 }
 
 // Check if dark mode is active
@@ -235,45 +214,6 @@ export default function HealthMonitor() {
     const gridColor = dark ? '#374151' : '#e5e7eb' // gray-700 / gray-200
     const borderColor = dark ? '#4b5563' : '#d1d5db' // gray-600 / gray-300
 
-    // IST offset in milliseconds (5 hours 30 minutes)
-    const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000
-
-    // Helper to convert UTC timestamp to IST formatted string
-    const formatTimeIST = (time: number): string => {
-      const date = new Date(time * 1000)
-      const istDate = new Date(date.getTime() + IST_OFFSET_MS)
-      const hours = istDate.getUTCHours().toString().padStart(2, '0')
-      const minutes = istDate.getUTCMinutes().toString().padStart(2, '0')
-      return `${hours}:${minutes}`
-    }
-
-    // Helper to format date and time for crosshair tooltip in IST
-    const formatDateTimeIST = (time: number): string => {
-      const date = new Date(time * 1000)
-      const istDate = new Date(date.getTime() + IST_OFFSET_MS)
-      const day = istDate.getUTCDate().toString().padStart(2, '0')
-      const months = [
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'May',
-        'Jun',
-        'Jul',
-        'Aug',
-        'Sep',
-        'Oct',
-        'Nov',
-        'Dec',
-      ]
-      const month = months[istDate.getUTCMonth()]
-      const year = istDate.getUTCFullYear().toString().slice(-2)
-      const hours = istDate.getUTCHours().toString().padStart(2, '0')
-      const minutes = istDate.getUTCMinutes().toString().padStart(2, '0')
-      const seconds = istDate.getUTCSeconds().toString().padStart(2, '0')
-      return `${day} ${month} '${year} ${hours}:${minutes}:${seconds}`
-    }
-
     // Create chart options - no grid lines for clean look
     const chartOptions = {
       height: 300,
@@ -288,7 +228,7 @@ export default function HealthMonitor() {
       timeScale: {
         borderColor: borderColor,
         timeVisible: true,
-        tickMarkFormatter: (time: number) => formatTimeIST(time),
+        tickMarkFormatter: (time: number) => formatAppTime(time * 1000),
       },
       rightPriceScale: {
         borderColor: borderColor,
@@ -298,7 +238,12 @@ export default function HealthMonitor() {
         horzLine: { color: gridColor },
       },
       localization: {
-        timeFormatter: (time: number) => formatDateTimeIST(time),
+        timeFormatter: (time: number) =>
+          formatAppDateTime(time * 1000, {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+          }),
       },
     }
 
@@ -470,7 +415,7 @@ export default function HealthMonitor() {
               System Status: {currentMetrics.overall_status.toUpperCase()}
             </p>
             <p className="text-sm text-muted-foreground">
-              Last updated (IST): {formatIstDateTime(currentMetrics.timestamp)}
+              Last updated ({APP_TIME_ZONE}): {formatAppDateTime(currentMetrics.timestamp)}
             </p>
           </div>
         </div>
@@ -862,7 +807,7 @@ export default function HealthMonitor() {
                 .map((metric, idx) => (
                   <TableRow key={idx}>
                     <TableCell className="font-mono text-xs">
-                      {formatIstTime(metric.timestamp)}
+                      {formatAppTime(metric.timestamp)}
                     </TableCell>
                     <TableCell className="text-right">{metric.fd_count}</TableCell>
                     <TableCell className="text-right">{metric.memory_rss_mb.toFixed(1)}</TableCell>

@@ -134,6 +134,9 @@ still held within the same day is unaffected, and so is every other broker.
 - **ltp** is the current market price
 - **pnl** = (LTP - Average Price) × Quantity (for long), reverse for short
 - For F&O positions, ensure lot size alignment
+- Bybit returns active derivative positions from Linear, Inverse, and Options.
+  Quantity is positive for long positions and negative for short positions;
+  Spot coin balances are returned separately by [Holdings](./holdings.md).
 
 ## Use Cases
 

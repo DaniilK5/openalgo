@@ -28,7 +28,9 @@ def import_broker_module(broker_name: str) -> Any | None:
         return None
 
 
-def get_intervals_with_auth(auth_token: str, broker: str) -> tuple[bool, dict[str, Any], int]:
+def get_intervals_with_auth(
+    auth_token: str, broker: str, category: str | None = None
+) -> tuple[bool, dict[str, Any], int]:
     """
     Get supported intervals for the broker using provided auth token.
 
@@ -47,8 +49,26 @@ def get_intervals_with_auth(auth_token: str, broker: str) -> tuple[bool, dict[st
         return False, {"status": "error", "message": "Broker-specific module not found"}, 404
 
     try:
+        if category is not None and broker != "bybit":
+            return (
+                False,
+                {"status": "error", "message": "category is only supported for Bybit"},
+                400,
+            )
+        if broker == "bybit" and category == "option":
+            return (
+                False,
+                {"status": "error", "message": "Bybit options do not provide historical klines"},
+                400,
+            )
+
         # Initialize broker's data handler
         data_handler = broker_module.BrokerData(auth_token)
+        timeframe_map = (
+            data_handler.get_timeframe_map(category)
+            if broker == "bybit"
+            else data_handler.timeframe_map
+        )
 
         # Get supported intervals from the timeframe map with proper numerical sorting
         def sort_intervals(interval_list):
@@ -69,8 +89,8 @@ def get_intervals_with_auth(auth_token: str, broker: str) -> tuple[bool, dict[st
         # hands the caller a timeframe that 400s the moment it is used. Worse,
         # the choice is remembered, so a chart that picked it stays broken across
         # reloads. The alias keeps working as input; it is just not offered.
-        offered = [k for k in data_handler.timeframe_map.keys() if k in SUPPORTED_INTERVALS]
-        dropped = [k for k in data_handler.timeframe_map.keys() if k not in SUPPORTED_INTERVALS]
+        offered = [k for k in timeframe_map.keys() if k in SUPPORTED_INTERVALS]
+        dropped = [k for k in timeframe_map.keys() if k not in SUPPORTED_INTERVALS]
         if dropped:
             logger.debug(
                 "Not advertising broker intervals the history API rejects: %s",
@@ -93,7 +113,10 @@ def get_intervals_with_auth(auth_token: str, broker: str) -> tuple[bool, dict[st
 
 
 def get_intervals(
-    api_key: str | None = None, auth_token: str | None = None, broker: str | None = None
+    api_key: str | None = None,
+    auth_token: str | None = None,
+    broker: str | None = None,
+    category: str | None = None,
 ) -> tuple[bool, dict[str, Any], int]:
     """
     Get supported intervals for the broker.
@@ -115,11 +138,15 @@ def get_intervals(
         AUTH_TOKEN, broker_name = get_auth_token_broker(api_key)
         if AUTH_TOKEN is None:
             return False, {"status": "error", "message": "Invalid openalgo apikey"}, 403
-        return get_intervals_with_auth(AUTH_TOKEN, broker_name)
+        if category is None:
+            return get_intervals_with_auth(AUTH_TOKEN, broker_name)
+        return get_intervals_with_auth(AUTH_TOKEN, broker_name, category)
 
     # Case 2: Direct internal call with auth_token and broker
     elif auth_token and broker:
-        return get_intervals_with_auth(auth_token, broker)
+        if category is None:
+            return get_intervals_with_auth(auth_token, broker)
+        return get_intervals_with_auth(auth_token, broker, category)
 
     # Case 3: Invalid parameters
     else:

@@ -1,40 +1,77 @@
 # Bybit broker integration plan
 
 ## Current state
-- Research and auth scaffold are completed.
-- Bybit is registered in platform config, login flow and proxy wiring.
-- The project has a working scaffold, but not a live-validated Bybit integration yet.
 
-## Recommended execution path
-The staged Bybit integration has reached the final verification pass: contract validation, master-symbol build, REST market-data, signed order/account flow, and streaming registration have all been completed. The remaining work is live hardening with a real account and real API keys, not a broad rewrite.
+- Bybit platform registration, authentication scaffold, category-aware symbol master, public market data, account read APIs, dashboard/holdings display, and streaming implementation are present.
+- `BYBIT_TESTNET=true` routes Bybit REST, server-time checks, master download, and public/private WebSockets to testnet. `BYBIT_BASE_URL` remains the mainnet/regional REST override when testnet is false.
+- Spot, Linear, Inverse, and Options are represented in the symbol master and market-data paths. Spot `minOrderQty` and `maxOrderQty` are now retained for validation.
+- Order placement, modification, cancellation, cancel-all, smart-order position lookup, and close-position paths have category-aware local implementations. Order requests validate instrument metadata, quantity steps, price ticks, and supported product/order combinations.
+- Bybit realtime order scans retry category-specific required filters (`settleCoin`/`baseCoin`) when category-only queries return retCode 10001. A successful filtered response with no open orders is treated as a valid empty result instead of re-raising the rejected initial query.
+- Bybit Scalping supports Spot instruments and quote-currency Market Buys, with Sell quantities reserved against a persistent ledger of Scalping-owned fills. Fills reconcile by `orderLinkId`; Action Center approvals/rejections and terminal order updates preserve or release reservations appropriately.
+- `APP_TIMEZONE` is configurable in `.env` and defaults to `Asia/Almaty`. Backend/frontend date displays, Bybit order/trade timestamps, and health/latency API timestamps use it. New and edited schedules use the application timezone; existing recurring schedules preserve their execution instants, with Historify's migration backfilling legacy rows as `Asia/Kolkata`.
+- Bybit REST calls now use pybit's typed V5 methods for authentication, public market data, instrument master, account data, and order lifecycle requests. Its request signing and retry handling replace the plugin's custom REST signature code; the shared pybit HTTP session is closed on reconfiguration and process shutdown. Under eventlet, blocking SDK calls run via its thread pool and are serialized to protect the shared requests session.
+- The pybit REST client uses a 10-second receive window and retries Bybit timestamp-window rejections. The observed ~5.9-second server offset should fit this window, but live account verification is still required.
+- The focused Bybit/timezone regression suite passed: 119 tests. Frontend timezone tests passed, and the full frontend production build completed after `npm ci` restored the lockfile-pinned `openalgo-script@0.5.0` (the existing `node_modules` had stale `0.4.0`). Vite reports advisory warnings for the runtime timezone script and large chunks.
+- The private/public WebSocket implementation remains separate and has not been migrated to pybit or live-validated. Its lifecycle shutdown/reconnect race was fixed and covered by targeted tests; static FD audit found no remaining leak in the changed paths.
+- This is not live-validated. The latest reported REST errors were retCode 10002 (about 5.9 seconds of clock skew) and retCode 10004 (signature mismatch); no live account-data requests, real orders, or authenticated WebSocket checks were run after the pybit migration.
+- Do not treat a successful OpenAlgo login or analyzer-mode order as proof of Bybit authentication or order execution. Analyzer mode does not reach the broker API.
 
-Why:
-- The symbol contract, public market-data contract, signed order/account contract and streaming adapter have all been validated in code and through package-level smoke tests.
-- The only stage still dependent on real credentials is the authenticated live hardening check against the real Bybit account and live WebSocket feed.
-- This keeps the integration incremental and reduces the risk of shipping a broker integration built on assumptions rather than confirmed responses.
+## Immediate user-side check: choose the right credential for the test
 
-## Planned phases
-1. Stage 1: research and contract validation
-   - Done: validated the live `/v5/market/instruments-info` endpoint and the auth-signature flow.
+Read-only credentials and testnet credentials serve different checks:
 
-2. Stage 2: platform wiring
-   - Done: registration, UI, env, login branch, proxy adapter.
+1. To isolate authentication and account-read access without order risk, use a fresh mainnet key with read-only permissions. It verifies signed wallet/order/position reads only; it cannot test order placement.
+2. To test the order lifecycle, create a separate key in Bybit Testnet and set `BYBIT_TESTNET=true`. Testnet trading permissions are appropriate there because the account is simulated and separate from mainnet.
+3. Do not reuse or paste previously shared credentials. Confirm the key belongs to the same environment selected in configuration.
+4. If IP restrictions are enabled, register the server's current public egress IP, not the workstation's private/LAN address.
+5. Confirm the server clock is synchronized. Retry once after checking configuration; repeated 401s should be diagnosed from sanitized status, response metadata, selected environment, and clock-offset logs.
+6. Never send API key, secret, signature, auth headers, or signed request data in screenshots or chat. Report only sanitized outcomes.
 
-3. Stage 3: master contract and symbol mapping
-   - Done: Bybit linear perpetual/futures are downloaded and written to `symtoken`.
+Pass condition: authentication succeeds against the selected environment. A mainnet read-only key gates only mainnet account reads; testnet order checks must authenticate with a Testnet key.
 
-4. Stage 4: market data REST
-   - Done: live quotes, depth and history are implemented and validated against public V5 endpoints.
+### Switching environments
 
-5. Stage 5: orders and account data
-   - Done: signed order/account mapping, margins and holdings/position normalization implemented.
+- Set `BYBIT_TESTNET=true` for testnet, or `false` for mainnet.
+- When false, `BYBIT_BASE_URL` may select the explicitly intended mainnet/regional REST host. When true, the testnet REST host is selected regardless of `BYBIT_BASE_URL`.
+- Restart OpenAlgo and its WebSocket proxy after changing `.env`, reconnect Bybit with credentials from that environment, and refresh the Bybit master. The local broker session and symbol master represent the selected environment; do not expect mainnet and testnet sessions to run side-by-side in one instance.
+- WebSocket traffic follows the same switch. Testnet API keys and mainnet API keys are not interchangeable.
 
-6. Stage 6: WebSocket streaming
-   - Done: public market-data + private account adapter and proxy registration implemented and smoke-tested.
+## Remaining phases
 
-7. Stage 7: live hardening and verification
-   - Done for code-level validation: compileall, package import, adapter init, subscription/unsubscription smoke tests passed.
-   - Remaining only with real API credentials: authenticated wallet/order/position tests and live subscription validation.
+### Phase 1: authenticated read-only account verification
 
-## Decision
-The staged implementation is complete enough for the code path and proxy integration; the final gate is live broker validation with actual Bybit credentials, which should be run only in a real account environment.
+- Verify wallet/funds and dashboard values against the Bybit account UI, including USD-equivalent equity and per-coin balances.
+- Verify orderbook, tradebook, and positions for each category the account actually uses. Check pagination, timestamps, duplicate handling, empty responses, and error messages.
+- Confirm Unified Account mode assumptions. Record unsupported account modes or endpoint permission requirements explicitly.
+- Keep API key trading permission disabled.
+
+### Phase 2: master and public market-data matrix
+
+- Refresh the master and verify Spot, Linear, Inverse, and Options symbols survive together; check representative symbols, precision, minimums, expiry, strike, and category.
+- Check quotes, multi-quotes, depth, intervals, and history for representative instruments from every supported category.
+- Compare returned values and timestamps with Bybit's UI/public API. Options history and any unsupported interval/category combinations must fail clearly rather than return fabricated data.
+
+### Phase 3: order-contract review and testnet/demo validation
+
+- First finish offline contract tests for create/amend/cancel/cancel-all, order status, smart orders, and close-all, including one-way/hedge position modes, conditional orders, and partial failures.
+- Use Bybit testnet/demo credentials and a small, explicitly approved test order; verify acknowledgement in the Bybit order book, then cancel it. An HTTP success alone is not proof of a fill or final order state.
+- Verify Spot and all derivative categories independently. Test minimum/step/tick boundaries and broker rejections.
+- Do not use a mainnet key with trading permission until testnet/demo checks pass and the operator explicitly approves a live order.
+- Current close-all support is intentionally limited: it closes Linear/Inverse derivative positions and refuses the whole operation before sending if unsupported Options positions are present. Spot wallet balances are not positions and are not sold.
+
+### Phase 4: streaming and order-update verification
+
+- After read-only authentication is confirmed, verify public market-data subscriptions and private order/execution/position updates.
+- Check reconnect, unsubscribe, duplicate subscription, and disconnect behavior. Confirm ticks reach the UI through the proxy/ZMQ path and order updates reach their consumers.
+
+### Phase 5: hardening and release readiness
+
+- Run targeted Bybit tests, relevant cross-broker regression tests, frontend build/lint for touched UI, migration checks, and `fd-audit`.
+- Verify user-facing failures, rate-limit handling, and that logs do not expose credentials or signed data.
+- Document supported categories, account modes, limitations, and exact live-test coverage. Add a changelog entry before publishing.
+
+## Gate sequence
+
+`fresh mainnet read-only key -> authenticated mainnet account reads -> public category data matrix -> offline order contract -> separate testnet key + BYBIT_TESTNET=true -> testnet order lifecycle and streaming -> explicitly approved mainnet smoke test -> release hardening`
+
+Never skip a gate when the previous one fails. No real order should be sent without explicit opt-in.

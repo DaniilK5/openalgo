@@ -85,6 +85,14 @@ import { Textarea } from '@/components/ui/textarea'
 import { useProfileMenuItems } from '@/hooks/useProfileMenuItems'
 import { useSocket } from '@/hooks/useSocket'
 import { cn } from '@/lib/utils'
+import {
+  APP_TIME_ZONE,
+  appTodayDateInput,
+  convertScheduleTime,
+  formatAppDate,
+  formatAppDateTime,
+  LEGACY_SCHEDULE_TIME_ZONE,
+} from '@/lib/dateTime'
 import { useAuthStore } from '@/stores/authStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { showToast } from '@/utils/toast'
@@ -200,6 +208,7 @@ interface Schedule {
   interval_value?: number
   interval_unit?: 'minutes' | 'hours'
   time_of_day?: string
+  timezone?: string
   download_source?: 'watchlist' // Always watchlist, kept for API compatibility
   data_interval: '1m' | 'D'
   lookback_days: number
@@ -248,8 +257,8 @@ const DATE_PRESETS = [
 ]
 
 function getDateFromPreset(months: number): string {
-  const d = new Date()
-  d.setMonth(d.getMonth() - months)
+  const d = new Date(`${appTodayDateInput()}T12:00:00Z`)
+  d.setUTCMonth(d.getUTCMonth() - months)
   return d.toISOString().split('T')[0]
 }
 
@@ -304,7 +313,7 @@ export default function Historify() {
   // Download settings
   const [selectedInterval, setSelectedInterval] = useState<string>('D')
   const [startDate, setStartDate] = useState(() => getDateFromPreset(1))
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [endDate, setEndDate] = useState(appTodayDateInput)
   const [incrementalDownload, setIncrementalDownload] = useState(false)
 
   // FNO Discovery state (disabled for now - will be added later)
@@ -342,7 +351,7 @@ export default function Historify() {
   const [scheduleType, setScheduleType] = useState<'interval' | 'daily'>('daily')
   const [scheduleIntervalValue, setScheduleIntervalValue] = useState(5)
   const [scheduleIntervalUnit, setScheduleIntervalUnit] = useState<'minutes' | 'hours'>('minutes')
-  const [scheduleTimeOfDay, setScheduleTimeOfDay] = useState('09:15')
+  const [scheduleTimeOfDay, setScheduleTimeOfDay] = useState('08:45')
   const [scheduleDataInterval, setScheduleDataInterval] = useState<'1m' | 'D'>('D')
   const [scheduleLookbackDays, setScheduleLookbackDays] = useState(1)
   const [isCreatingSchedule, setIsCreatingSchedule] = useState(false)
@@ -730,7 +739,7 @@ export default function Historify() {
     setScheduleType('daily')
     setScheduleIntervalValue(5)
     setScheduleIntervalUnit('minutes')
-    setScheduleTimeOfDay('09:15')
+    setScheduleTimeOfDay('08:45')
     setScheduleDataInterval('D')
     setScheduleLookbackDays(1)
     setEditingSchedule(null)
@@ -744,7 +753,12 @@ export default function Historify() {
       setScheduleType(schedule.schedule_type)
       setScheduleIntervalValue(schedule.interval_value || 5)
       setScheduleIntervalUnit(schedule.interval_unit || 'minutes')
-      setScheduleTimeOfDay(schedule.time_of_day || '09:15')
+      setScheduleTimeOfDay(
+        convertScheduleTime(
+          schedule.time_of_day || '09:15',
+          schedule.timezone || LEGACY_SCHEDULE_TIME_ZONE
+        )
+      )
       setScheduleDataInterval(schedule.data_interval)
       setScheduleLookbackDays(schedule.lookback_days)
     } else {
@@ -768,6 +782,7 @@ export default function Historify() {
         schedule_type: scheduleType,
         data_interval: scheduleDataInterval,
         lookback_days: scheduleLookbackDays,
+        timezone: APP_TIME_ZONE,
       }
 
       if (scheduleType === 'interval') {
@@ -917,11 +932,9 @@ export default function Historify() {
     if (schedule.schedule_type === 'interval') {
       return `Every ${schedule.interval_value} ${schedule.interval_unit}`
     }
-    // Convert 24-hour to 12-hour format with AM/PM
-    const [h, m] = (schedule.time_of_day || '09:15').split(':').map(Number)
-    const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h
-    const ampm = h >= 12 ? 'PM' : 'AM'
-    return `Daily at ${hour12}:${m.toString().padStart(2, '0')} ${ampm} IST`
+    const zone = schedule.timezone || LEGACY_SCHEDULE_TIME_ZONE
+    const shown = convertScheduleTime(schedule.time_of_day || '09:15', zone)
+    return `Daily at ${shown} ${APP_TIME_ZONE}`
   }
 
   const performSearch = async (query: string) => {
@@ -2104,7 +2117,7 @@ export default function Historify() {
                                 )}
                                 onClick={() => {
                                   setStartDate(getDateFromPreset(preset.months))
-                                  setEndDate(new Date().toISOString().split('T')[0])
+                                  setEndDate(appTodayDateInput())
                                 }}
                               >
                                 {preset.label}
@@ -2323,7 +2336,7 @@ export default function Historify() {
                                   <Badge variant="outline">{item.exchange}</Badge>
                                 </TableCell>
                                 <TableCell className="hidden md:table-cell text-muted-foreground text-sm">
-                                  {new Date(item.added_at).toLocaleDateString()}
+                                  {formatAppDate(item.added_at)}
                                 </TableCell>
                                 <TableCell>
                                   <div className="flex items-center justify-end gap-1">
@@ -2581,12 +2594,12 @@ export default function Historify() {
                                 <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                                   {schedule.next_run_at && (
                                     <span>
-                                      Next: {new Date(schedule.next_run_at).toLocaleString()}
+                                      Next: {formatAppDateTime(schedule.next_run_at)}
                                     </span>
                                   )}
                                   {schedule.last_run_at && (
                                     <span>
-                                      Last: {new Date(schedule.last_run_at).toLocaleString()}
+                                      Last: {formatAppDateTime(schedule.last_run_at)}
                                     </span>
                                   )}
                                   <span>
@@ -2708,7 +2721,7 @@ export default function Historify() {
                                       {scheduleExecutions[schedule.id].map((exec) => (
                                         <TableRow key={exec.id}>
                                           <TableCell className="text-sm">
-                                            {new Date(exec.started_at).toLocaleString()}
+                                            {formatAppDateTime(exec.started_at)}
                                           </TableCell>
                                           <TableCell>
                                             <Badge
@@ -2869,7 +2882,7 @@ export default function Historify() {
               </div>
             ) : (
               <div>
-                <Label>Time of Day (IST)</Label>
+                <Label>Time of Day (Asia/Almaty)</Label>
                 <div className="flex gap-2 mt-1">
                   <Select
                     value={(() => {

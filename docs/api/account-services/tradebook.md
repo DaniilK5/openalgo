@@ -94,6 +94,8 @@ curl -X POST http://127.0.0.1:5000/api/v1/tradebook \
 - **trade_value** is the monetary value of the trade
 - Use for trade reconciliation and P&L calculation
 - Trades are sorted by execution time
+- Bybit includes Spot, Linear, Inverse, and Options executions from the current
+  UTC day and follows the pagination cursor until all records are retrieved.
 
 ## Difference: OrderBook vs TradeBook
 

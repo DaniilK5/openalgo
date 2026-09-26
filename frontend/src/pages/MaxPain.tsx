@@ -221,7 +221,7 @@ export default function MaxPain() {
       ? painData.findIndex((item) => item.strike === maxPainStrike)
       : -1
 
-    const annotations: Partial<PlotlyTypes.Annotations>[] =
+    const annotations: Partial<PlotlyTypes.Annotation>[] =
       maxPainIndex >= 0
         ? [
             {

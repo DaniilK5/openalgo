@@ -16,7 +16,6 @@ import csv
 import io
 from datetime import datetime
 
-import pytz
 from flask import Blueprint, Response, jsonify, request
 
 from database.health_db import HealthAlert, HealthMetric, health_session
@@ -24,27 +23,16 @@ from limiter import limiter
 from utils.health_monitor import check_db_connectivity, get_cached_health_status
 from utils.logging import get_logger
 from utils.session import check_session_validity
+from utils.timezones import format_app_datetime, to_app_datetime
 
 logger = get_logger(__name__)
 
 health_bp = Blueprint("health_bp", __name__, url_prefix="/health")
 
 
-def convert_to_ist(timestamp):
-    """Convert UTC timestamp to IST"""
-    if isinstance(timestamp, str):
-        timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-    utc = pytz.timezone("UTC")
-    ist = pytz.timezone("Asia/Kolkata")
-    if timestamp.tzinfo is None:
-        timestamp = utc.localize(timestamp)
-    return timestamp.astimezone(ist)
-
-
-def format_ist_time(timestamp):
-    """Format timestamp in IST with 12-hour format"""
-    ist_time = convert_to_ist(timestamp)
-    return ist_time.strftime("%d-%m-%Y %I:%M:%S %p")
+def format_app_time(timestamp):
+    """Format a UTC health timestamp in the application timezone."""
+    return format_app_datetime(timestamp, format_string="%d-%m-%Y %I:%M:%S %p")
 
 
 # ============================================================================
@@ -265,7 +253,7 @@ def get_current_metrics():
 
         return jsonify(
             {
-                "timestamp": convert_to_ist(metric.timestamp).isoformat(),
+                "timestamp": to_app_datetime(metric.timestamp).isoformat(),
                 "fd": {
                     "count": metric.fd_count or 0,
                     "limit": metric.fd_limit,
@@ -318,7 +306,7 @@ def get_metrics_history():
         return jsonify(
             [
                 {
-                    "timestamp": convert_to_ist(m.timestamp).isoformat(),
+                    "timestamp": to_app_datetime(m.timestamp).isoformat(),
                     "fd_count": m.fd_count,
                     "memory_rss_mb": m.memory_rss_mb,
                     "db_connections": m.db_connections_total,
@@ -359,7 +347,7 @@ def get_alerts():
             [
                 {
                     "id": alert.id,
-                    "timestamp": convert_to_ist(alert.timestamp).isoformat(),
+                    "timestamp": to_app_datetime(alert.timestamp).isoformat(),
                     "alert_type": alert.alert_type,
                     "severity": alert.severity,
                     "metric_name": alert.metric_name,
@@ -428,7 +416,7 @@ def export_metrics():
         # Write header
         writer.writerow(
             [
-                "Date & Time (IST)",
+                "Date & Time (Asia/Almaty)",
                 "FD Count",
                 "FD Limit",
                 "FD Status",
@@ -448,7 +436,7 @@ def export_metrics():
         for metric in metrics:
             writer.writerow(
                 [
-                    format_ist_time(metric.timestamp),
+                    format_app_time(metric.timestamp),
                     metric.fd_count or 0,
                     metric.fd_limit or 0,
                     metric.fd_status or "unknown",

@@ -36,6 +36,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import type { CommandStats, TelegramUser } from '@/types/telegram'
 import { showToast } from '@/utils/toast'
+import { formatAppDateTime } from '@/lib/dateTime'
 
 export default function TelegramUsers() {
   const [users, setUsers] = useState<TelegramUser[]>([])
@@ -147,7 +148,7 @@ export default function TelegramUsers() {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-'
-    return new Date(dateString).toLocaleString()
+    return formatAppDateTime(dateString)
   }
 
   if (isLoading) {
