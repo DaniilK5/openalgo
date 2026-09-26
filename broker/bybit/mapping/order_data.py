@@ -1,7 +1,9 @@
-from datetime import datetime, timezone
 import math
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from database.token_db import get_oa_symbol
+from utils.timezones import APP_TIMEZONE
 
 
 def _coerce_float(value, default=0.0):
@@ -50,7 +52,9 @@ def _canonical_symbol(row):
 
 def _timestamp(value, include_date=False):
     try:
-        stamp = datetime.fromtimestamp(int(value) / 1000, tz=timezone.utc)
+        stamp = datetime.fromtimestamp(int(value) / 1000, tz=timezone.utc).astimezone(
+            ZoneInfo(APP_TIMEZONE)
+        )
     except (TypeError, ValueError, OSError) as exc:
         raise ValueError("Bybit account data could not be read. Try again later.") from exc
     format_string = "%d-%b-%Y %H:%M:%S" if include_date else "%H:%M:%S"

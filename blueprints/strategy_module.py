@@ -48,6 +48,7 @@ from services.strategy_module.audit_messages import CLOSE_ALL_REQUESTED_MESSAGE
 from utils.ip_helper import get_real_ip
 from utils.logging import get_logger
 from utils.session import check_session_validity
+from utils.timezones import APP_TIMEZONE, LEGACY_SCHEDULE_TIMEZONE
 
 logger = get_logger(__name__)
 
@@ -275,7 +276,7 @@ MAX_SIGNAL_LOTS = 10_000
 
 TRAIL_FIELDS = ("x", "y")
 LOCK_PROFIT_FIELDS = ("mode", "if_profit_reaches", "lock_profit", "trail_step")
-SCHEDULER_FIELDS = ("enabled", "days", "start_time", "auto_stop_time", "default_mode")
+SCHEDULER_FIELDS = ("enabled", "days", "start_time", "auto_stop_time", "default_mode", "timezone")
 
 MIN_LEGS = 1
 MAX_LEGS = 10
@@ -766,7 +767,7 @@ def _validate_lock_profit(raw: Any) -> dict | None:
 
 
 def _validate_scheduler(raw: Any) -> dict | None:
-    """``{enabled, days[], start_time, auto_stop_time, default_mode}``.
+    """``{enabled, days[], start_time, auto_stop_time, default_mode, timezone}``.
 
     The times and days are only enforced as present once the scheduler is
     enabled, so a half-filled panel still saves. ``default_mode`` defaults to
@@ -811,6 +812,11 @@ def _validate_scheduler(raw: Any) -> dict | None:
         "auto_stop_time": stop.strftime("%H:%M") if stop else None,
         "default_mode": _choice(
             data.get("default_mode") or "sandbox", store.RUN_MODES, f"{label}.default_mode"
+        ),
+        "timezone": _choice(
+            data.get("timezone") or LEGACY_SCHEDULE_TIMEZONE,
+            (APP_TIMEZONE, LEGACY_SCHEDULE_TIMEZONE),
+            f"{label}.timezone",
         ),
     }
 
@@ -1229,6 +1235,8 @@ def create_strategy():
     if error:
         return error
 
+    if isinstance(payload.get("scheduler"), dict):
+        payload["scheduler"].setdefault("timezone", APP_TIMEZONE)
     config, message = validate_strategy_config(payload)
     if message:
         return _error(message, 400)
@@ -1301,6 +1309,9 @@ def update_strategy(sid):
 
     if row.status == "running":
         return _error("Stop the strategy before editing it", 409)
+
+    if isinstance(payload.get("scheduler"), dict):
+        payload["scheduler"].setdefault("timezone", APP_TIMEZONE)
 
     # Refused here rather than left to the merge. strategy_kind is in
     # CONFIG_FIELDS because the merge seeds itself from that set and a signal

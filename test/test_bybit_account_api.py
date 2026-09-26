@@ -287,6 +287,430 @@ def test_spot_order_uses_native_symbol_and_spot_category(monkeypatch):
     ]
 
 
+def test_order_schema_preserves_category_and_market_unit_with_decimal_crypto_budget():
+    from marshmallow import ValidationError
+
+    from restx_api.schemas import OrderSchema
+
+    order = OrderSchema().load(
+        {
+            "apikey": "test-key",
+            "strategy": "test",
+            "exchange": "CRYPTO",
+            "category": "spot",
+            "symbol": "BTCUSDT",
+            "action": "BUY",
+            "quantity": "25.25",
+            "market_unit": "quoteCoin",
+        }
+    )
+
+    assert order["category"] == "spot"
+    assert order["market_unit"] == "quoteCoin"
+    assert order["quantity"] == 25.25
+
+    legacy = OrderSchema().load(
+        {
+            "apikey": "test-key",
+            "strategy": "test",
+            "exchange": "CRYPTO",
+            "symbol": "BTCUSDT",
+            "action": "BUY",
+            "quantity": "25.25",
+        }
+    )
+    assert "category" not in legacy
+    assert "market_unit" not in legacy
+
+    for invalid_field, invalid_value in (("market_unit", "quote"), ("category", "wallet")):
+        invalid_data = {
+            "apikey": "test-key",
+            "strategy": "test",
+            "exchange": "CRYPTO",
+            "symbol": "BTCUSDT",
+            "action": "BUY",
+            "quantity": "25.25",
+            invalid_field: invalid_value,
+        }
+        with pytest.raises(ValidationError):
+            OrderSchema().load(invalid_data)
+
+
+def test_live_order_service_passes_category_and_market_unit_to_bybit(monkeypatch):
+    from restx_api.schemas import OrderSchema
+    from services import place_order_service
+
+    request_data = {
+        "apikey": "test-key",
+        "strategy": "test",
+        "exchange": "CRYPTO",
+        "category": "spot",
+        "symbol": "BTCUSDT",
+        "action": "BUY",
+        "quantity": "25.25",
+        "pricetype": "MARKET",
+        "product": "CNC",
+        "market_unit": "quoteCoin",
+        "order_link_id": "sc-test-order-link",
+    }
+    validated_data = OrderSchema().load(request_data)
+    broker_calls = []
+    broker_module = SimpleNamespace(
+        place_order_api=lambda data, auth: (
+            broker_calls.append((data.copy(), auth)) or (SimpleNamespace(status=200), {}, "bybit-order")
+        )
+    )
+    monkeypatch.setattr(place_order_service, "get_analyze_mode", lambda: False)
+    monkeypatch.setattr(place_order_service, "import_broker_module", lambda broker: broker_module)
+    monkeypatch.setattr(place_order_service.bus, "publish", lambda event: None)
+
+    success, response, status = place_order_service.place_order_with_auth(
+        validated_data,
+        "broker-token",
+        "bybit",
+        request_data,
+    )
+
+    assert success is True
+    assert response["orderid"] == "bybit-order"
+    assert status == 200
+    assert broker_calls[0][0]["category"] == "spot"
+    assert broker_calls[0][0]["market_unit"] == "quoteCoin"
+    assert broker_calls[0][1] == "broker-token"
+
+
+def test_bybit_scalping_spot_order_reconciles_reservation_after_acceptance(monkeypatch):
+    from restx_api.schemas import OrderSchema
+    from services import bybit_scalping_inventory_service, place_order_service
+
+    request_data = {
+        "apikey": "test-key",
+        "strategy": "scalping",
+        "exchange": "CRYPTO",
+        "category": "spot",
+        "symbol": "BTCUSDT",
+        "action": "SELL",
+        "quantity": "0.1",
+        "pricetype": "MARKET",
+        "product": "CNC",
+        "market_unit": "baseCoin",
+        "order_link_id": "sc-test-order-link",
+    }
+    validated_data = OrderSchema().load(request_data)
+    reconciliations = []
+    broker_module = SimpleNamespace(
+        place_order_api=lambda data, auth: (SimpleNamespace(status=200), {}, "bybit-order")
+    )
+    monkeypatch.setattr(place_order_service, "get_analyze_mode", lambda: False)
+    monkeypatch.setattr(place_order_service, "import_broker_module", lambda broker: broker_module)
+    monkeypatch.setattr(place_order_service, "verify_api_key", lambda api_key: "test-user")
+    monkeypatch.setattr(place_order_service.bus, "publish", lambda event: None)
+    monkeypatch.setattr(
+        bybit_scalping_inventory_service,
+        "reconcile_bybit_scalping_spot_order_data",
+        lambda **kwargs: reconciliations.append(kwargs),
+    )
+
+    success, response, status = place_order_service.place_order_with_auth(
+        validated_data,
+        "broker-token",
+        "bybit",
+        request_data,
+    )
+
+    assert success is True
+    assert response["orderid"] == "bybit-order"
+    assert status == 200
+    assert reconciliations == [
+        {
+            "user_id": "test-user",
+            "order_data": validated_data,
+            "broker": "bybit",
+            "order_id": "bybit-order",
+            "accepted": True,
+        }
+    ]
+
+
+def test_spot_market_buy_quote_budget_sets_market_unit_and_validates_quote_steps(monkeypatch):
+    instrument = SimpleNamespace(
+        category="spot",
+        qty_step=None,
+        base_precision=0.000001,
+        quote_precision=0.01,
+        quote_coin="USDT",
+        min_qty=0.000001,
+        max_qty=10,
+        max_market_qty=10,
+        max_limit_qty=10,
+        min_order_amt=5,
+        tick_size=0.01,
+    )
+    monkeypatch.setattr(order_api, "get_symbol_info", lambda symbol, exchange: instrument)
+    monkeypatch.setattr(order_api, "get_br_symbol", lambda symbol, exchange: "BTCUSDT")
+    requests = []
+    monkeypatch.setattr(
+        order_api,
+        "_signed_request",
+        lambda endpoint, auth, method="GET", params=None, payload=None: (
+            requests.append((endpoint, payload)) or _response({"orderId": "spot-buy"})
+        ),
+    )
+
+    _, _, order_id = order_api.place_order_api(
+        {
+            "symbol": "BTCUSDT",
+            "exchange": "CRYPTO",
+            "action": "BUY",
+            "quantity": "25.25",
+            "pricetype": "MARKET",
+            "product": "CNC",
+            "market_unit": "quoteCoin",
+            "order_link_id": "sc-test-order-link",
+        },
+        "token",
+    )
+
+    assert order_id == "spot-buy"
+    assert requests == [
+        (
+            "/v5/order/create",
+            {
+                "category": "spot",
+                "symbol": "BTCUSDT",
+                "side": "Buy",
+                "orderType": "Market",
+                "qty": "25.25",
+                "marketUnit": "quoteCoin",
+                "orderLinkId": "sc-test-order-link",
+            },
+        )
+    ]
+
+    for amount, message in (
+        ("25.251", "quote precision"),
+        ("4.99", "minimum order value"),
+    ):
+        with pytest.raises(ValueError, match=message):
+            order_api.place_order_api(
+                {
+                    "symbol": "BTCUSDT",
+                    "exchange": "CRYPTO",
+                    "action": "BUY",
+                    "quantity": amount,
+                    "pricetype": "MARKET",
+                    "product": "CNC",
+                    "marketUnit": "quoteCoin",
+                },
+                "token",
+            )
+    instrument.quote_coin = "BTC"
+    with pytest.raises(ValueError, match="USDT or USDC"):
+        order_api.place_order_api(
+            {
+                "symbol": "BTCUSDT",
+                "exchange": "CRYPTO",
+                "action": "BUY",
+                "quantity": "25.25",
+                "pricetype": "MARKET",
+                "product": "CNC",
+                "market_unit": "quoteCoin",
+            },
+            "token",
+        )
+    assert len(requests) == 1
+
+
+def test_bybit_rejects_client_category_that_does_not_match_symbol(monkeypatch):
+    instrument = SimpleNamespace(
+        category="spot",
+        qty_step=None,
+        base_precision=0.000001,
+        quote_precision=0.01,
+        quote_coin="USDT",
+        min_qty=0.000001,
+        max_qty=10,
+        max_market_qty=10,
+        max_limit_qty=10,
+        min_order_amt=5,
+        tick_size=0.01,
+    )
+    monkeypatch.setattr(order_api, "get_symbol_info", lambda symbol, exchange: instrument)
+    monkeypatch.setattr(order_api, "get_br_symbol", lambda symbol, exchange: "BTCUSDT")
+    monkeypatch.setattr(
+        order_api,
+        "_signed_request",
+        lambda *args, **kwargs: pytest.fail("Mismatched category must be rejected locally"),
+    )
+
+    with pytest.raises(ValueError, match="does not match the symbol"):
+        order_api.place_order_api(
+            {
+                "symbol": "BTCUSDT",
+                "exchange": "CRYPTO",
+                "category": "linear",
+                "action": "BUY",
+                "quantity": "25.25",
+                "pricetype": "MARKET",
+                "product": "CNC",
+                "market_unit": "quoteCoin",
+            },
+            "token",
+        )
+
+
+def test_spot_market_sell_uses_base_quantity_and_rejects_quote_unit(monkeypatch):
+    instrument = SimpleNamespace(
+        category="spot",
+        qty_step=None,
+        base_precision=0.000001,
+        quote_precision=0.01,
+        min_qty=0.000001,
+        max_qty=10,
+        max_market_qty=1,
+        max_limit_qty=10,
+        min_order_amt=5,
+        tick_size=0.01,
+    )
+    monkeypatch.setattr(order_api, "get_symbol_info", lambda symbol, exchange: instrument)
+    monkeypatch.setattr(order_api, "get_br_symbol", lambda symbol, exchange: "BTCUSDT")
+    requests = []
+    monkeypatch.setattr(
+        order_api,
+        "_signed_request",
+        lambda endpoint, auth, method="GET", params=None, payload=None: (
+            requests.append(payload) or _response({"orderId": "spot-sell"})
+        ),
+    )
+
+    _, _, order_id = order_api.place_order_api(
+        {
+            "symbol": "BTCUSDT",
+            "exchange": "CRYPTO",
+            "action": "SELL",
+            "quantity": "0.5",
+            "pricetype": "MARKET",
+            "product": "CNC",
+            "market_unit": "baseCoin",
+        },
+        "token",
+    )
+
+    assert order_id == "spot-sell"
+    assert requests == [
+        {
+            "category": "spot",
+            "symbol": "BTCUSDT",
+            "side": "Sell",
+            "orderType": "Market",
+            "qty": "0.5",
+            "marketUnit": "baseCoin",
+        }
+    ]
+    with pytest.raises(ValueError, match="must use base coin quantity"):
+        order_api.place_order_api(
+            {
+                "symbol": "BTCUSDT",
+                "exchange": "CRYPTO",
+                "action": "SELL",
+                "quantity": "0.5",
+                "pricetype": "MARKET",
+                "product": "CNC",
+                "market_unit": "quoteCoin",
+            },
+            "token",
+        )
+    assert len(requests) == 1
+
+
+def test_spot_market_order_without_market_unit_keeps_legacy_payload(monkeypatch):
+    instrument = SimpleNamespace(
+        category="spot",
+        qty_step=None,
+        base_precision=0.01,
+        min_qty=0.01,
+        max_qty=10,
+        max_market_qty=10,
+        max_limit_qty=10,
+        min_order_amt=5,
+        tick_size=0.01,
+    )
+    monkeypatch.setattr(order_api, "get_symbol_info", lambda symbol, exchange: instrument)
+    monkeypatch.setattr(order_api, "get_br_symbol", lambda symbol, exchange: "BTCUSDT")
+    requests = []
+    monkeypatch.setattr(
+        order_api,
+        "_signed_request",
+        lambda endpoint, auth, method="GET", params=None, payload=None: (
+            requests.append(payload) or _response({"orderId": "legacy-market"})
+        ),
+    )
+
+    order_api.place_order_api(
+        {
+            "symbol": "BTCUSDT",
+            "exchange": "CRYPTO",
+            "action": "BUY",
+            "quantity": "0.5",
+            "pricetype": "MARKET",
+            "product": "CNC",
+        },
+        "token",
+    )
+
+    assert requests == [
+        {
+            "category": "spot",
+            "symbol": "BTCUSDT",
+            "side": "Buy",
+            "orderType": "Market",
+            "qty": "0.5",
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"market_unit": "quote"}, "market unit must be baseCoin or quoteCoin"),
+        ({"market_unit": "quoteCoin", "marketUnit": "baseCoin"}, "fields must match"),
+        ({"market_unit": "baseCoin"}, "spot market orders only"),
+    ],
+)
+def test_market_unit_is_validated_before_broker_request(monkeypatch, overrides, message):
+    instrument = SimpleNamespace(
+        category="spot",
+        qty_step=None,
+        base_precision=0.01,
+        min_qty=0.01,
+        max_qty=10,
+        max_market_qty=10,
+        max_limit_qty=10,
+        min_order_amt=5,
+        tick_size=0.01,
+    )
+    monkeypatch.setattr(order_api, "get_symbol_info", lambda symbol, exchange: instrument)
+    monkeypatch.setattr(order_api, "get_br_symbol", lambda symbol, exchange: "BTCUSDT")
+    monkeypatch.setattr(
+        order_api,
+        "_signed_request",
+        lambda *args, **kwargs: pytest.fail("Invalid market unit must be rejected locally"),
+    )
+
+    data = {
+        "symbol": "BTCUSDT",
+        "exchange": "CRYPTO",
+        "action": "BUY",
+        "quantity": "0.5",
+        "pricetype": "LIMIT",
+        "price": "100",
+        "product": "CNC",
+        **overrides,
+    }
+    with pytest.raises(ValueError, match=message):
+        order_api.place_order_api(data, "token")
+
+
 def test_order_quantity_precision_is_checked_before_broker_request(monkeypatch):
     instrument = SimpleNamespace(
         category="linear",
@@ -492,6 +916,7 @@ def test_order_mapping_normalizes_status_and_category_specific_symbols(monkeypat
     assert mapped[0]["order_status"] == "open"
     assert mapped[0]["pendingqty"] == 0.25
     assert mapped[0]["pricetype"] == "LIMIT"
+    assert mapped[0]["timestamp"] == "26-Sep-2026 18:43:01"
     assert order_data.calculate_order_statistics(mapped)["total_open_orders"] == 1
 
 
@@ -567,6 +992,9 @@ def test_orderbook_and_tradebook_services_accept_bybit_mapping_contract(monkeypa
             }
         ]
     }
+    assert order_data.map_order_data(order_payload)[0]["timestamp"] == "26-Sep-2026 18:43:01"
+    assert order_data.map_trade_data(trade_payload)[0]["timestamp"] == "18:43:01"
+
     monkeypatch.setattr(
         orderbook_service,
         "import_broker_module",

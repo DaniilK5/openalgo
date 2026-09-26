@@ -36,6 +36,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import type { ChartinkStrategy, ChartinkSymbolMapping } from '@/types/chartink'
+import { formatAppDate } from '@/lib/dateTime'
 import { showToast } from '@/utils/toast'
 
 export default function ViewChartinkStrategy() {
@@ -197,7 +198,7 @@ export default function ViewChartinkStrategy() {
             </Badge>
           </h1>
           <p className="text-muted-foreground">
-            Chartink • Created {new Date(strategy.created_at).toLocaleDateString()}
+            Chartink • Created {formatAppDate(strategy.created_at)}
           </p>
         </div>
         <div className="flex gap-2">

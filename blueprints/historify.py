@@ -13,6 +13,7 @@ from flask import Blueprint, Response, jsonify, request, send_file, session
 
 from utils.logging import get_logger
 from utils.session import check_session_validity
+from utils.timezones import APP_TIMEZONE
 
 logger = get_logger(__name__)
 
@@ -1313,6 +1314,7 @@ def create_schedule():
             interval_value=data.get("interval_value"),
             interval_unit=data.get("interval_unit", "minutes"),
             time_of_day=data.get("time_of_day", "09:15"),
+            timezone=APP_TIMEZONE,
             lookback_days=lookback_days,
             description=data.get("description"),
         )
@@ -1404,6 +1406,7 @@ def update_schedule(schedule_id):
             interval_value=data.get("interval_value"),
             interval_unit=data.get("interval_unit"),
             time_of_day=data.get("time_of_day"),
+            timezone=APP_TIMEZONE,
             data_interval=data.get("data_interval"),
             lookback_days=data.get("lookback_days"),
         )

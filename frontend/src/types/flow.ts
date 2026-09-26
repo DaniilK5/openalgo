@@ -10,6 +10,7 @@ export interface StartNodeData {
   label?: string
   scheduleType: 'once' | 'daily' | 'weekly' | 'interval'
   time: string
+  timezone?: string
   days?: number[]
   executeAt?: string
   intervalMinutes?: number // Legacy - kept for backward compatibility

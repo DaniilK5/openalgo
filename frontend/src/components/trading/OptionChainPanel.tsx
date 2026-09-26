@@ -47,6 +47,7 @@ import {
 } from '@/components/ui/select'
 import { useMarketStatus } from '@/hooks/useMarketStatus'
 import { needsPreviousClose } from '@/lib/trading/previousClose'
+import { formatAppTime } from '@/lib/dateTime'
 import type { SearchRow } from '@/lib/trading/terminal'
 import { cn } from '@/lib/utils'
 import type { OptionData } from '@/types/option-chain'
@@ -751,14 +752,14 @@ export function OptionChainPanel({ apiKey, onPick, activeSymbol }: Props) {
       {rows.length > 0 &&
         (chainError && lastUpdate ? (
           <p className="shrink-0 border-t px-2 py-1 text-[10px] text-amber-600 dark:text-amber-400">
-            Not updating. Last loaded {lastUpdate.toLocaleTimeString()}
+            Not updating. Last loaded {formatAppTime(lastUpdate)}
           </p>
         ) : marketOpen && !isStreaming && lastUpdate ? (
           // Streaming is the point of this panel. If the socket is not up the
           // numbers are still refreshed by the structural poll, just far more
           // slowly, and saying so beats letting them read as live.
           <p className="shrink-0 border-t px-2 py-1 text-[10px] text-amber-600 dark:text-amber-400">
-            Not streaming. Last update {lastUpdate.toLocaleTimeString()}
+            Not streaming. Last update {formatAppTime(lastUpdate)}
           </p>
         ) : !marketOpen ? (
           // The panel already backs the poll off to a minute when the market is

@@ -23,6 +23,7 @@ from database.apscheduler_jobstore_db import (
 from database.engine_factory import create_db_engine
 from utils.env_config import env_int
 from utils.logging import get_logger
+from utils.timezones import LEGACY_SCHEDULE_TIMEZONE
 
 logger = get_logger(__name__)
 
@@ -150,6 +151,7 @@ class FlowScheduler:
         interval_unit: str | None = None,
         func: Callable = None,
         market_hours_only: bool = False,
+        schedule_timezone: str | None = None,
     ) -> str:
         """Add a workflow job to the scheduler
 
@@ -162,8 +164,15 @@ class FlowScheduler:
             interval_value: Interval value (e.g., 1, 5, 10)
             interval_unit: Interval unit ('seconds', 'minutes', 'hours')
             func: Function to execute (defaults to execute_workflow_scheduled)
+            schedule_timezone: Timezone for wall-clock daily and weekly schedules.
         """
+        import pytz
+
         job_id = f"flow_workflow_{workflow_id}"
+        try:
+            schedule_zone = pytz.timezone(schedule_timezone or LEGACY_SCHEDULE_TIMEZONE)
+        except pytz.UnknownTimeZoneError as exc:
+            raise ValueError(f"Invalid schedule timezone: {schedule_timezone}") from exc
 
         # Clear any previous job for this workflow. A brand-new workflow has
         # none, which remove_job treats as a normal no-op.
@@ -207,6 +216,8 @@ class FlowScheduler:
         elif schedule_type == "once" and execute_at:
             try:
                 execute_datetime = datetime.fromisoformat(execute_at.replace("Z", "+00:00"))
+                if execute_datetime.tzinfo is None:
+                    execute_datetime = schedule_zone.localize(execute_datetime)
                 trigger = DateTrigger(run_date=execute_datetime)
                 logger.info(f"Creating one-time trigger: {execute_datetime}")
             except ValueError as e:
@@ -216,7 +227,7 @@ class FlowScheduler:
         elif schedule_type == "daily":
             try:
                 hour, minute = map(int, time_str.split(":"))
-                trigger = CronTrigger(hour=hour, minute=minute)
+                trigger = CronTrigger(hour=hour, minute=minute, timezone=schedule_zone)
                 logger.info(f"Creating daily trigger: {time_str}")
             except ValueError as e:
                 logger.error(f"Invalid time format: {time_str} - {e}")
@@ -227,7 +238,12 @@ class FlowScheduler:
                 hour, minute = map(int, time_str.split(":"))
                 day_names = {0: "mon", 1: "tue", 2: "wed", 3: "thu", 4: "fri", 5: "sat", 6: "sun"}
                 day_of_week = ",".join(day_names[d] for d in days if d in day_names)
-                trigger = CronTrigger(day_of_week=day_of_week, hour=hour, minute=minute)
+                trigger = CronTrigger(
+                    day_of_week=day_of_week,
+                    hour=hour,
+                    minute=minute,
+                    timezone=schedule_zone,
+                )
                 logger.info(f"Creating weekly trigger: {day_of_week} at {time_str}")
             except (ValueError, KeyError) as e:
                 logger.error(f"Invalid weekly schedule config: {e}")
@@ -497,6 +513,7 @@ def reconcile_scheduler_jobs() -> dict:
                 interval_value=data.get("intervalValue"),
                 interval_unit=data.get("intervalUnit"),
                 market_hours_only=bool(data.get("marketHoursOnly", False)),
+                schedule_timezone=data.get("timezone") or LEGACY_SCHEDULE_TIMEZONE,
             )
             set_schedule_job_id(workflow.id, job_id)
             restored += 1

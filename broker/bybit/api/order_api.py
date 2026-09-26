@@ -224,6 +224,42 @@ def _validate_order_amount(instrument, quantity, price, category, order_type):
     return qty, normalized_price
 
 
+def _validate_spot_quote_amount(instrument, amount):
+    quote_amount = _decimal(amount, "quote amount")
+    if quote_amount <= 0:
+        raise ValueError("Bybit quote amount must be greater than zero.")
+
+    precision_value = getattr(instrument, "quote_precision", None)
+    if precision_value is None:
+        raise ValueError("Bybit quote precision is unavailable for this symbol.")
+    precision = _decimal(precision_value, "quote precision")
+    if precision <= 0 or quote_amount % precision:
+        raise ValueError("Bybit quote amount does not match the symbol's quote precision.")
+
+    minimum = getattr(instrument, "min_order_amt", None)
+    if minimum is None:
+        raise ValueError("Bybit minimum order value is unavailable for this symbol.")
+    if quote_amount < _decimal(minimum, "minimum order amount"):
+        raise ValueError("Bybit spot order is below the symbol's minimum order value.")
+
+    return quote_amount
+
+
+def _market_unit(data):
+    supplied = [
+        data[key] for key in ("market_unit", "marketUnit") if key in data and data[key] is not None
+    ]
+    if not supplied:
+        return None
+    if any(value != supplied[0] for value in supplied[1:]):
+        raise ValueError("Bybit market unit fields must match.")
+
+    market_unit = supplied[0]
+    if not isinstance(market_unit, str) or market_unit not in {"baseCoin", "quoteCoin"}:
+        raise ValueError("Bybit market unit must be baseCoin or quoteCoin.")
+    return market_unit
+
+
 def _trigger_direction(category, broker_symbol, trigger_price):
     data = request(
         "/v5/market/tickers",
@@ -251,6 +287,10 @@ def _order_response(response):
 
 def place_order_api(data, auth):
     instrument, category, broker_symbol = _order_instrument(data)
+    requested_category = data.get("category")
+    if requested_category is not None and requested_category != category:
+        raise ValueError("Bybit order category does not match the symbol's instrument category.")
+
     action = str(data.get("action") or data.get("side") or "").upper()
     if action not in {"BUY", "SELL"}:
         raise ValueError("Bybit order action must be BUY or SELL.")
@@ -275,13 +315,27 @@ def place_order_api(data, auth):
     if category != "spot" and str(data.get("product") or "NRML").upper() not in {"NRML", "MIS"}:
         raise ValueError("Bybit derivative orders do not support this product type.")
 
-    qty, price = _validate_order_amount(
-        instrument,
-        data.get("quantity"),
-        data.get("price") if order_type == "Limit" else None,
-        category,
-        order_type,
-    )
+    market_unit = _market_unit(data)
+    if market_unit is not None and (category != "spot" or order_type != "Market"):
+        raise ValueError("Bybit market units are supported for spot market orders only.")
+    if market_unit == "quoteCoin" and action != "BUY":
+        raise ValueError("Bybit spot market sells must use base coin quantity.")
+
+    if market_unit == "quoteCoin":
+        quote_coin = str(getattr(instrument, "quote_coin", "") or "").upper()
+        if quote_coin not in {"USDT", "USDC"}:
+            raise ValueError("Bybit quote-budget market buys require a USDT or USDC quote coin.")
+        qty = _validate_spot_quote_amount(instrument, data.get("quantity"))
+        price = None
+    else:
+        qty, price = _validate_order_amount(
+            instrument,
+            data.get("quantity"),
+            data.get("price") if order_type == "Limit" else None,
+            category,
+            order_type,
+        )
+
     payload = {
         "category": category,
         "symbol": broker_symbol,
@@ -289,6 +343,13 @@ def place_order_api(data, auth):
         "orderType": order_type,
         "qty": _decimal_text(qty),
     }
+    order_link_id = data.get("order_link_id")
+    if order_link_id is not None:
+        if not isinstance(order_link_id, str) or not 1 <= len(order_link_id) <= 36:
+            raise ValueError("Bybit order link ID must contain 1 to 36 characters.")
+        payload["orderLinkId"] = order_link_id
+    if market_unit is not None:
+        payload["marketUnit"] = market_unit
     if price is not None:
         payload["price"] = _decimal_text(price)
 

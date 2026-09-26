@@ -16,6 +16,7 @@ Order constants (docs/prompt/order-constants.md):
 import math
 import re
 from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 
 import pytz
 from flask import Blueprint, jsonify, request, session
@@ -430,6 +431,31 @@ def _mcx_cds_option_chain(underlying, exchange, expiry_ddmmmyy, strike_count, ap
     )
 
 
+@scalping_bp.route("/scalping/api/bybit/inventory", methods=["GET"])
+@check_session_validity
+def bybit_spot_inventory():
+    """Return only scalping-owned Bybit Spot inventory for the active user."""
+    if (session.get("broker") or "").strip().lower() != "bybit":
+        return jsonify({"status": "error", "message": "Connect a Bybit account to view this inventory"}), 400
+    symbol = (request.args.get("symbol") or "").strip().upper()[:60]
+    if not symbol:
+        return jsonify({"status": "error", "message": "Select a Spot instrument"}), 400
+    instrument = _bybit_instrument(symbol)
+    if not instrument or str(instrument.category or "").lower() != "spot":
+        return jsonify({"status": "error", "message": "The selected instrument is not a Bybit Spot symbol"}), 400
+
+    from services.bybit_scalping_inventory_service import get_bybit_scalping_spot_inventory
+
+    inventory = get_bybit_scalping_spot_inventory(
+        user_id=session.get("user"),
+        symbol=symbol,
+        exchange="CRYPTO",
+        mode=_current_mode(),
+        base_coin=instrument.base_coin,
+    )
+    return jsonify({"status": "success", "data": inventory})
+
+
 @scalping_bp.route("/scalping/api/strikes", methods=["GET"])
 @check_session_validity
 def strikes():
@@ -506,6 +532,61 @@ def search():
 
     success, response, status_code = search_symbols(query=query, exchange=exchange, api_key=api_key)
     return jsonify(response), status_code
+
+
+@scalping_bp.route("/scalping/api/bybit/instruments", methods=["GET"])
+@check_session_validity
+def bybit_instruments():
+    """Search the active Bybit master by V5 category for the Bybit scalping view."""
+    if (session.get("broker") or "").strip().lower() != "bybit":
+        return jsonify({"status": "error", "message": "Connect a Bybit account to use these instruments"}), 400
+
+    category = (request.args.get("category") or "").strip().lower()
+    query = (request.args.get("query") or "").strip().upper()[:40]
+    if category not in {"spot", "linear", "inverse", "option"}:
+        return jsonify({"status": "error", "message": "Select a supported Bybit market"}), 400
+    if len(query) < 2:
+        return jsonify({"status": "success", "data": []})
+
+    from broker.bybit.database.master_contract_db import SymToken as BybitSymToken
+    from broker.bybit.database.master_contract_db import db_session as bybit_session
+
+    escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    rows = (
+        bybit_session.query(BybitSymToken)
+        .filter(
+            BybitSymToken.category == category,
+            BybitSymToken.exchange == "CRYPTO",
+            BybitSymToken.symbol.ilike(f"%{escaped}%", escape="\\"),
+        )
+        .order_by(BybitSymToken.symbol)
+        .limit(100)
+        .all()
+    )
+    return jsonify(
+        {
+            "status": "success",
+            "data": [
+                {
+                    "symbol": row.symbol,
+                    "exchange": row.exchange,
+                    "category": row.category,
+                    "name": row.name,
+                    "expiry": row.expiry,
+                    "strike": row.strike,
+                    "instrumenttype": row.instrumenttype,
+                    "tick_size": row.tick_size,
+                    "qty_step": row.qty_step,
+                    "min_qty": row.min_qty,
+                    "min_order_amt": row.min_order_amt,
+                    "base_coin": row.base_coin,
+                    "quote_coin": row.quote_coin,
+                    "settle_coin": row.settle_coin,
+                }
+                for row in rows
+            ],
+        }
+    )
 
 
 @scalping_bp.route("/scalping/api/futures", methods=["GET"])
@@ -589,6 +670,24 @@ def _resolve_session_auth():
     return None, None, api_key, None, None
 
 
+def _bybit_category(symbol: str) -> str | None:
+    """Resolve Bybit category from the active master, never from UI-supplied guesses."""
+    record = _bybit_instrument(symbol)
+    return str(record.category).lower() if record and record.category else None
+
+
+def _bybit_instrument(symbol: str):
+    """Resolve complete Bybit instrument metadata from its active master."""
+    from broker.bybit.database.master_contract_db import SymToken as BybitSymToken
+    from broker.bybit.database.master_contract_db import db_session as bybit_session
+
+    return (
+        bybit_session.query(BybitSymToken)
+        .filter(BybitSymToken.symbol == symbol, BybitSymToken.exchange == "CRYPTO")
+        .first()
+    )
+
+
 def _validate_quantity(symbol: str, exchange: str, quantity: int) -> str | None:
     """Validate order quantity against the symbol's lot size server-side.
 
@@ -631,18 +730,24 @@ def _validate_quantity(symbol: str, exchange: str, quantity: int) -> str | None:
 @check_session_validity
 @track_latency("PLACE")
 def order():
-    """Place a single MARKET order for a scalping leg (BUY/SELL CE/PE)."""
+    """Place one MARKET order for a selected scalping instrument."""
     data = request.get_json(silent=True) or {}
 
     symbol = (data.get("symbol") or "").strip()
     exchange = (data.get("exchange") or "").strip().upper()
     action = (data.get("action") or "").strip().upper()
-    product = (data.get("product") or "MIS").strip().upper()
+    category = (data.get("category") or "").strip().lower()
+    is_bybit = (session.get("broker") or "").strip().lower() == "bybit"
+    is_bybit_crypto = is_bybit and exchange == "CRYPTO"
+    is_bybit_spot = is_bybit_crypto and category == "spot"
+    product = (data.get("product") or ("CNC" if is_bybit_spot else "NRML" if is_bybit else "MIS")).strip().upper()
 
     try:
-        quantity = int(data.get("quantity", 0))
-    except (TypeError, ValueError):
+        quantity = float(data.get("quantity", 0)) if is_bybit_crypto else int(data.get("quantity", 0))
+        decimal_quantity = Decimal(str(data.get("quantity", 0))) if is_bybit_spot else None
+    except (InvalidOperation, TypeError, ValueError):
         quantity = 0
+        decimal_quantity = None
 
     # `lots` is sent on manual entry orders so the lot cap can be enforced
     # server-side. SL auto-exits omit it (they close a raw position quantity).
@@ -650,18 +755,34 @@ def order():
 
     if not symbol:
         return jsonify({"status": "error", "message": "symbol is required"}), 400
-    if exchange not in VALID_ORDER_EXCHANGES:
+    if is_bybit and not is_bybit_crypto:
+        return jsonify({"status": "error", "message": "Bybit scalping orders require a CRYPTO instrument"}), 400
+    if is_bybit_crypto:
+        if category not in {"spot", "linear", "inverse", "option"}:
+            return jsonify({"status": "error", "message": "Select a supported Bybit market"}), 400
+        bybit_instrument = _bybit_instrument(symbol)
+        master_category = (
+            str(bybit_instrument.category).lower()
+            if bybit_instrument and bybit_instrument.category
+            else None
+        )
+        if master_category != category:
+            return jsonify({"status": "error", "message": "The selected instrument does not match the Bybit market"}), 400
+    elif exchange not in VALID_ORDER_EXCHANGES:
         return jsonify({"status": "error", "message": f"Invalid exchange: {exchange}"}), 400
     if action not in VALID_ACTIONS:
         return jsonify({"status": "error", "message": f"Invalid action: {action}"}), 400
-    if product not in _allowed_products(exchange):
+    allowed_products = (
+        {"CNC"} if is_bybit_spot else DERIVATIVE_PRODUCTS if is_bybit_crypto else _allowed_products(exchange)
+    )
+    if product not in allowed_products:
         return jsonify({"status": "error", "message": f"Invalid product for {exchange}: {product}"}), 400
     if quantity <= 0:
         return jsonify({"status": "error", "message": "quantity must be positive"}), 400
     if quantity > MAX_ORDER_QUANTITY:
         return jsonify({"status": "error", "message": "quantity exceeds the safety limit"}), 400
 
-    if _is_derivative(exchange):
+    if _is_derivative(exchange) and not is_bybit_crypto:
         # Derivatives trade in lots: enforce the lot cap + lot-size multiple + freeze.
         if lots is not None:
             try:
@@ -675,7 +796,31 @@ def order():
         qty_err = _validate_quantity(symbol, exchange, quantity)
         if qty_err:
             return jsonify({"status": "error", "message": qty_err}), 400
-    # Equity (NSE/BSE) trades in whole shares; quantity bounds above are sufficient.
+    market_unit = data.get("market_unit")
+    if is_bybit_spot:
+        expected_unit = "quoteCoin" if action == "BUY" else "baseCoin"
+        if market_unit != expected_unit:
+            return jsonify({"status": "error", "message": "Spot Buy size must be a quote-currency budget and Sell size must be base-coin quantity"}), 400
+        try:
+            from broker.bybit.api.order_api import (
+                _validate_order_amount,
+                _validate_spot_quote_amount,
+            )
+
+            if action == "BUY":
+                _validate_spot_quote_amount(bybit_instrument, decimal_quantity)
+            else:
+                _validate_order_amount(
+                    bybit_instrument,
+                    decimal_quantity,
+                    None,
+                    "spot",
+                    "Market",
+                )
+        except ValueError as exc:
+            return jsonify({"status": "error", "message": str(exc)}), 400
+    elif market_unit:
+        return jsonify({"status": "error", "message": "market_unit is supported only for Bybit spot orders"}), 400
 
     auth_token, broker, api_key, err, code = _resolve_session_auth()
     if err:
@@ -692,6 +837,34 @@ def order():
         "product": product,
         "quantity": quantity,
     }
+    if is_bybit_crypto:
+        order_data["category"] = category
+    if is_bybit_spot:
+        order_data["market_unit"] = market_unit
+    inventory_reservation = None
+    inventory_mode = _current_mode()
+    if is_bybit_spot and inventory_mode == "live":
+        try:
+            from services.bybit_scalping_inventory_service import (
+                reserve_bybit_scalping_spot_order,
+            )
+
+            inventory_reservation = reserve_bybit_scalping_spot_order(
+                user_id=session.get("user"),
+                symbol=symbol,
+                exchange=exchange,
+                mode=inventory_mode,
+                side=action,
+                quantity=decimal_quantity,
+                base_coin=bybit_instrument.base_coin,
+                market_unit=market_unit,
+            )
+            order_data["order_link_id"] = inventory_reservation["order_link_id"]
+        except ValueError as exc:
+            return jsonify({"status": "error", "message": str(exc)}), 400
+        except Exception:
+            logger.exception("Could not reserve Bybit Spot inventory for a scalping order")
+            return jsonify({"status": "error", "message": "Could not safely prepare this Spot order"}), 500
 
     # Pass the client-supplied LTP (from the live WebSocket feed) through as a prefetched
     # quote. In analyze/sandbox mode the sandbox engine uses it instead of fetching its own
@@ -718,7 +891,7 @@ def order():
     if success:
         from database.scalping_db import track_symbol
 
-        track_symbol(symbol, exchange, product, mode=_current_mode())
+        track_symbol(symbol, exchange, product, mode=inventory_mode)
     return jsonify(response), status_code
 
 

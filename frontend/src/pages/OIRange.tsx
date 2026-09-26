@@ -25,6 +25,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { useSupportedExchanges } from '@/hooks/useSupportedExchanges'
 import Plot from '@/lib/Plot2D'
+import { formatAppTime } from '@/lib/dateTime'
 import { useThemeStore } from '@/stores/themeStore'
 import { showToast } from '@/utils/toast'
 
@@ -720,7 +721,7 @@ export default function OIRange() {
           </Badge>
           {lastUpdated && (
             <span className="text-xs text-muted-foreground ml-auto">
-              Last updated: {lastUpdated.toLocaleTimeString()}
+              Last updated: {formatAppTime(lastUpdated)}
             </span>
           )}
         </div>

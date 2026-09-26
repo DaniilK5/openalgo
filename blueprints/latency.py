@@ -1,10 +1,7 @@
 import csv
 import io
 from collections import defaultdict
-from datetime import datetime
-
 import numpy as np
-import pytz
 from flask import Blueprint, Response, jsonify, render_template, request, session
 from sqlalchemy import func
 
@@ -12,27 +9,16 @@ from database.latency_db import OrderLatency, latency_session
 from limiter import limiter
 from utils.logging import get_logger
 from utils.session import check_session_validity
+from utils.timezones import format_app_datetime
 
 logger = get_logger(__name__)
 
 latency_bp = Blueprint("latency_bp", __name__, url_prefix="/latency")
 
 
-def convert_to_ist(timestamp):
-    """Convert UTC timestamp to IST"""
-    if isinstance(timestamp, str):
-        timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-    utc = pytz.timezone("UTC")
-    ist = pytz.timezone("Asia/Kolkata")
-    if timestamp.tzinfo is None:
-        timestamp = utc.localize(timestamp)
-    return timestamp.astimezone(ist)
-
-
-def format_ist_time(timestamp):
-    """Format timestamp in IST with 12-hour format"""
-    ist_time = convert_to_ist(timestamp)
-    return ist_time.strftime("%d-%m-%Y %I:%M:%S %p")
+def format_app_time(timestamp):
+    """Format a UTC latency timestamp in the application timezone."""
+    return format_app_datetime(timestamp, format_string="%d-%m-%Y %I:%M:%S %p")
 
 
 def get_histogram_data(broker=None):
@@ -91,7 +77,7 @@ def generate_csv(logs):
     # Write header with accurate, trader-friendly names
     writer.writerow(
         [
-            "Date & Time (IST)",
+            "Date & Time (Asia/Almaty)",
             "Broker",
             "Order ID",
             "Symbol",
@@ -108,7 +94,7 @@ def generate_csv(logs):
     for log in logs:
         writer.writerow(
             [
-                format_ist_time(log.timestamp),
+                format_app_time(log.timestamp),
                 log.broker or "N/A",
                 log.order_id,
                 log.symbol or "N/A",
@@ -141,10 +127,10 @@ def latency_dashboard():
 
     # logger.info(f"Broker histograms data: {broker_histograms}")  # Commented out to reduce log verbosity
 
-    # Format timestamps in IST and convert to JSON-serializable format
+    # Format timestamps in the application timezone for display.
     logs_json = []
     for log in recent_logs:
-        log.formatted_timestamp = format_ist_time(log.timestamp)
+        log.formatted_timestamp = format_app_time(log.timestamp)
         logs_json.append(
             {
                 "id": log.id,

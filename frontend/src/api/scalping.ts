@@ -13,6 +13,53 @@ import { webClient } from './client'
 // Scalping terminal API. Endpoints are served by blueprints/scalping.py under
 // the root path (not /api/v1), so we use webClient (session + CSRF aware).
 export const scalpingApi = {
+  getBybitInstruments: async (
+    category: 'spot' | 'linear' | 'inverse' | 'option',
+    query: string
+  ): Promise<{
+    status: string
+    data: Array<{
+      symbol: string
+      exchange: string
+      category: 'spot' | 'linear' | 'inverse' | 'option'
+      name?: string
+      expiry?: string
+      strike?: number
+      instrumenttype?: string
+      tick_size?: number
+      qty_step?: number
+      min_qty?: number
+      min_order_amt?: number
+      base_coin?: string
+      quote_coin?: string
+      settle_coin?: string
+    }>
+  }> => {
+    const response = await webClient.get('/scalping/api/bybit/instruments', {
+      params: { category, query },
+    })
+    return response.data
+  },
+
+  getBybitInventory: async (
+    symbol: string
+  ): Promise<{
+    status: string
+    data: {
+      symbol: string
+      mode: string
+      base_coin: string
+      owned_quantity: string
+      reserved_quantity: string
+      available_quantity: string
+    }
+  }> => {
+    const response = await webClient.get('/scalping/api/bybit/inventory', {
+      params: { symbol },
+    })
+    return response.data
+  },
+
   getUnderlyings: async (): Promise<UnderlyingsResponse> => {
     const response = await webClient.get<UnderlyingsResponse>('/scalping/api/underlyings')
     return response.data

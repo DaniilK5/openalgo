@@ -20,6 +20,12 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  APP_TIME_ZONE,
+  convertScheduleDate,
+  convertWeeklySchedule,
+  LEGACY_SCHEDULE_TIME_ZONE,
+} from '@/lib/dateTime'
 import type { PriceType } from '@/lib/flow/constants'
 import {
   DAYS_OF_WEEK,
@@ -285,9 +291,41 @@ export function ConfigPanel() {
 
   const handleDataChange = useCallback(
     (key: string, value: unknown) => {
-      if (selectedNodeId) updateNodeData(selectedNodeId, { [key]: value })
+      if (!selectedNodeId) return
+      const node = nodes.find((candidate) => candidate.id === selectedNodeId)
+      const data = (node?.data ?? {}) as Record<string, unknown>
+      const sourceTimezone =
+        typeof data.timezone === 'string' ? data.timezone : LEGACY_SCHEDULE_TIME_ZONE
+      if (node?.type === 'start' && sourceTimezone !== APP_TIME_ZONE) {
+        const dayNames = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+        const sourceDays = (Array.isArray(data.days) ? (data.days as number[]) : [0, 1, 2, 3, 4])
+          .map((day) => dayNames[day])
+          .filter((day): day is string => Boolean(day))
+        const convertedSchedule = convertWeeklySchedule(
+          typeof data.time === 'string' ? data.time : '09:15',
+          sourceDays,
+          sourceTimezone
+        )
+        const convertedDays = convertedSchedule.days
+          .map((day) => dayNames.indexOf(day))
+          .filter((day) => day >= 0)
+        const migratedData: Record<string, unknown> = {
+          time: convertedSchedule.time,
+          days: convertedDays,
+          timezone: APP_TIME_ZONE,
+        }
+        if (typeof data.executeAt === 'string') {
+          migratedData.executeAt = convertScheduleDate(
+            data.executeAt,
+            sourceTimezone
+          )
+        }
+        updateNodeData(selectedNodeId, { ...migratedData, [key]: value })
+        return
+      }
+      updateNodeData(selectedNodeId, { [key]: value })
     },
-    [selectedNodeId, updateNodeData]
+    [nodes, selectedNodeId, updateNodeData]
   )
 
   const handleDelete = useCallback(() => {
@@ -323,6 +361,22 @@ export function ConfigPanel() {
   const nodeInfo = getNodeInfo(selectedNode.type || '')
   const nodeData = selectedNode.data as Record<string, unknown>
   const nodeType = selectedNode.type || 'unknown'
+  const scheduleTimezone = (nodeData.timezone as string) || LEGACY_SCHEDULE_TIME_ZONE
+  const scheduleDays = (Array.isArray(nodeData.days) ? (nodeData.days as number[]) : [0, 1, 2, 3, 4])
+    .map((day) => ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'][day])
+    .filter((day): day is string => Boolean(day))
+  const displayedSchedule = convertWeeklySchedule(
+    (nodeData.time as string) || '09:15',
+    scheduleDays,
+    scheduleTimezone
+  )
+  const displayedScheduleDays = displayedSchedule.days
+    .map((day) => ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].indexOf(day))
+    .filter((day) => day >= 0)
+  const displayedExecuteAt =
+    typeof nodeData.executeAt === 'string'
+      ? convertScheduleDate(nodeData.executeAt, scheduleTimezone)
+      : ''
   const orderPriceType = (nodeData.priceType as PriceType | undefined) || 'MARKET'
   // What the Product control shows. A product the author picked is stored on
   // the node and always wins; with none stored the node follows its exchange,
@@ -391,11 +445,11 @@ export function ConfigPanel() {
                 </div>
                 {nodeData.scheduleType !== 'interval' && (
                   <div className="space-y-2">
-                    <Label className="text-xs">Time</Label>
+                    <Label className="text-xs">Schedule Time (Asia/Almaty)</Label>
                     <Input
                       type="time"
                       className="h-8"
-                      value={(nodeData.time as string) || '09:15'}
+                      value={displayedSchedule.time}
                       onChange={(e) => handleDataChange('time', e.target.value)}
                     />
                   </div>
@@ -457,7 +511,7 @@ export function ConfigPanel() {
                     </div>
                     <div className="flex flex-wrap gap-1">
                       {DAYS_OF_WEEK.map((day) => {
-                        const days = (nodeData.days as number[]) || [0, 1, 2, 3, 4]
+                        const days = displayedScheduleDays
                         const sel = days.includes(day.value)
                         return (
                           <button
@@ -491,7 +545,7 @@ export function ConfigPanel() {
                     <Input
                       type="date"
                       className="h-8"
-                      value={(nodeData.executeAt as string) || ''}
+                      value={displayedExecuteAt}
                       onChange={(e) => handleDataChange('executeAt', e.target.value)}
                     />
                   </div>

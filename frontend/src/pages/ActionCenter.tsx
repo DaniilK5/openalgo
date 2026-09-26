@@ -324,7 +324,12 @@ export default function ActionCenterPage() {
   const getRelativeTime = (istTimestamp: string): string => {
     if (!istTimestamp) return ''
     try {
-      const orderTime = new Date(istTimestamp.replace(' IST', ''))
+      const normalizedTimestamp = istTimestamp.replace(
+        /^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2}) IST$/,
+        '$1T$2+05:30'
+      )
+      const orderTime = new Date(normalizedTimestamp)
+      if (Number.isNaN(orderTime.getTime())) return ''
       const now = new Date()
       const diffMs = now.getTime() - orderTime.getTime()
       const diffMins = Math.floor(diffMs / 60000)

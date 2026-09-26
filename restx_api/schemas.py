@@ -23,7 +23,9 @@ class OrderSchema(Schema):
     apikey = fields.Str(required=True, validate=validate.Length(min=1, max=256))
     strategy = fields.Str(required=True)
     exchange = fields.Str(required=True, validate=validate.OneOf(VALID_EXCHANGES))
+    category = fields.Str(validate=validate.OneOf(["spot", "linear", "inverse", "option"]))
     symbol = fields.Str(required=True)
+    order_link_id = fields.Str(validate=validate.Length(min=1, max=36))
     action = fields.Str(required=True, validate=validate.OneOf(["BUY", "SELL", "buy", "sell"]))
     quantity = fields.Float(
         required=True, validate=validate.Range(min=0, min_inclusive=False, error="Quantity must be a positive number.")
@@ -46,6 +48,7 @@ class OrderSchema(Schema):
     underlying_ltp = fields.Float(
         missing=None, allow_none=True
     )  # Optional: passed from options order for execution reference
+    market_unit = fields.Str(validate=validate.OneOf(["baseCoin", "quoteCoin"]))
 
     @post_load
     def coerce_quantity(self, data, **kwargs):

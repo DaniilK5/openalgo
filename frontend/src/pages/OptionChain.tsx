@@ -39,6 +39,7 @@ import { useOptionChainLive } from '@/hooks/useOptionChainLive'
 import { useOptionChainPreferences } from '@/hooks/useOptionChainPreferences'
 import { useSupportedExchanges } from '@/hooks/useSupportedExchanges'
 import { cn } from '@/lib/utils'
+import { formatAppTime } from '@/lib/dateTime'
 import { useAuthStore } from '@/stores/authStore'
 import type { BarDataSource, BarStyle, ColumnKey, OptionStrike } from '@/types/option-chain'
 import { COLUMN_DEFINITIONS } from '@/types/option-chain'
@@ -1077,7 +1078,7 @@ export default function OptionChain() {
                 Bar: {barDataSource === 'oi' ? 'OI' : 'Volume'} ({barStyle})
               </div>
             </div>
-            <div>Last Update: {lastUpdate ? lastUpdate.toLocaleTimeString() : '-'}</div>
+            <div>Last Update: {lastUpdate ? formatAppTime(lastUpdate) : '-'}</div>
           </div>
         </>
       )}

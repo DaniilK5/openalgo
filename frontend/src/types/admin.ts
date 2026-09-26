@@ -199,6 +199,8 @@ export interface SystemDatabase {
 export interface SystemTime {
   server_time: string
   server_tz: string | null
+  app_time: string | null
+  app_timezone: string
   ist_time: string | null
 }
 
