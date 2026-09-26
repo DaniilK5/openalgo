@@ -111,18 +111,20 @@ def _realtime_param_candidates(category, symbol=None):
 def _fetch_realtime_orders(auth, category, symbol=None):
     rows = []
     last_error = None
+    request_succeeded = False
     for index, params in enumerate(_realtime_param_candidates(category, symbol=symbol)):
         try:
             fetched_rows = _fetch_pages("/v5/order/realtime", auth, params, page_size=50)
         except ValueError as exc:
             last_error = exc
             continue
+        request_succeeded = True
         if symbol or index == 0:
             rows = fetched_rows
             break
         rows.extend(fetched_rows)
 
-    if not rows and last_error is not None:
+    if not request_succeeded and last_error is not None:
         raise last_error
 
     deduplicated = {}
