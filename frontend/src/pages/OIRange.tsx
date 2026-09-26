@@ -378,7 +378,7 @@ export default function OIRange() {
     // ATM marker only when the ATM strike is within the visible range
     const atmIndex = atmStrike != null ? chain.findIndex((item) => item.strike === atmStrike) : -1
 
-    const annotations: Partial<PlotlyTypes.Annotations>[] =
+    const annotations: Partial<PlotlyTypes.Annotation>[] =
       atmIndex >= 0
         ? [
             {

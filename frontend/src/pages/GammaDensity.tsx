@@ -256,7 +256,7 @@ export default function GammaDensity() {
       ]
 
       const shapes: Partial<PlotlyTypes.Shape>[] = []
-      const annotations: Partial<PlotlyTypes.Annotations>[] = []
+      const annotations: Partial<PlotlyTypes.Annotation>[] = []
 
       // ±1σ shaded expected-move band
       if (band && band.one_sigma_low < band.one_sigma_high) {

@@ -239,7 +239,7 @@ export default function OITracker() {
     // Find ATM index in the chain for annotation/shape positioning
     const atmIndex = atmStrike ? chain.findIndex((item) => item.strike === atmStrike) : -1
 
-    const annotations: Partial<PlotlyTypes.Annotations>[] =
+    const annotations: Partial<PlotlyTypes.Annotation>[] =
       atmIndex >= 0
         ? [
             {
