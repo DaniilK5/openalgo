@@ -26,6 +26,13 @@ def timezone_for(name: str | None, fallback: str = APP_TIMEZONE) -> ZoneInfo:
         return ZoneInfo(fallback)
 
 
+def to_app_datetime(value: datetime, *, naive_timezone: str = "UTC") -> datetime:
+    """Convert a timestamp to the application timezone as an aware datetime."""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone_for(naive_timezone))
+    return value.astimezone(timezone_for(APP_TIMEZONE))
+
+
 def format_app_datetime(
     value: datetime | str,
     *,
@@ -42,9 +49,7 @@ def format_app_datetime(
             value = datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
             return value
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone_for(naive_timezone))
-    return value.astimezone(timezone_for(APP_TIMEZONE)).strftime(format_string)
+    return to_app_datetime(value, naive_timezone=naive_timezone).strftime(format_string)
 
 
 def convert_weekly_schedule(
