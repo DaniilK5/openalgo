@@ -37,7 +37,7 @@ export interface Trade {
   timestamp: string
 }
 
-export interface Holding {
+export interface StandardHolding {
   symbol: string
   exchange: string
   quantity: number
@@ -48,6 +48,17 @@ export interface Holding {
   average_price?: number
 }
 
+export interface AccountCoinBalance {
+  symbol: string
+  exchange: string
+  quantity: number
+  asset_type: 'account_coin_balance'
+  usd_value: number
+  currency: 'USD'
+}
+
+export type Holding = StandardHolding | AccountCoinBalance
+
 export interface PortfolioStats {
   totalholdingvalue: number
   totalinvvalue: number
@@ -55,8 +66,11 @@ export interface PortfolioStats {
   totalpnlpercentage: number
 }
 
-// Alias for consistency
-export type HoldingsStats = PortfolioStats
+export interface HoldingsStats extends Partial<PortfolioStats> {
+  total_value?: number
+  total_positions?: number
+  currency?: string
+}
 
 export interface MarginData {
   availablecash: number

@@ -1,9 +1,10 @@
 import re
 
 from marshmallow import Schema, ValidationError, fields, validate
-from utils.constants import SUPPORTED_INTERVALS
 
-from utils.constants import VALID_EXCHANGES
+from utils.constants import SUPPORTED_INTERVALS, VALID_EXCHANGES
+
+BYBIT_CATEGORIES = ["spot", "linear", "inverse", "option"]
 
 
 # Custom validator for date or timestamp string
@@ -42,11 +43,13 @@ class QuotesSchema(Schema):
     apikey = fields.Str(required=True, validate=validate.Length(min=1, max=256))
     symbol = fields.Str(required=True)  # Single symbol
     exchange = fields.Str(required=True, validate=validate.OneOf(VALID_EXCHANGES))  # Exchange (e.g., NSE, BSE)
+    category = fields.Str(required=False, validate=validate.OneOf(BYBIT_CATEGORIES))
 
 
 class SymbolExchangePair(Schema):
     symbol = fields.Str(required=True)
     exchange = fields.Str(required=True, validate=validate.OneOf(VALID_EXCHANGES))
+    category = fields.Str(required=False, validate=validate.OneOf(BYBIT_CATEGORIES))
 
 
 class MultiQuotesSchema(Schema):
@@ -60,6 +63,7 @@ class HistorySchema(Schema):
     apikey = fields.Str(required=True, validate=validate.Length(min=1, max=256))
     symbol = fields.Str(required=True)
     exchange = fields.Str(required=True, validate=validate.OneOf(VALID_EXCHANGES))  # Exchange (e.g., NSE, BSE)
+    category = fields.Str(required=False, validate=validate.OneOf(BYBIT_CATEGORIES))
     interval = fields.Str(
         required=True,
         validate=validate.OneOf(SUPPORTED_INTERVALS),
@@ -75,10 +79,12 @@ class DepthSchema(Schema):
     apikey = fields.Str(required=True, validate=validate.Length(min=1, max=256))
     symbol = fields.Str(required=True)
     exchange = fields.Str(required=True, validate=validate.OneOf(VALID_EXCHANGES))  # Exchange (e.g., NSE, BSE)
+    category = fields.Str(required=False, validate=validate.OneOf(BYBIT_CATEGORIES))
 
 
 class IntervalsSchema(Schema):
     apikey = fields.Str(required=True, validate=validate.Length(min=1, max=256))
+    category = fields.Str(required=False, validate=validate.OneOf(BYBIT_CATEGORIES))
 
 
 class SymbolSchema(Schema):
@@ -206,14 +212,18 @@ class OptionChainSchema(Schema):
 
 
 class MarketHolidaysSchema(Schema):
-    apikey = fields.Str(required=True, validate=validate.Length(min=1, max=256))  # API Key for authentication
+    apikey = fields.Str(
+        required=True, validate=validate.Length(min=1, max=256)
+    )  # API Key for authentication
     year = fields.Int(
         required=False, validate=validate.Range(min=2020, max=2050)
     )  # Year to get holidays for (defaults to current year)
 
 
 class MarketTimingsSchema(Schema):
-    apikey = fields.Str(required=True, validate=validate.Length(min=1, max=256))  # API Key for authentication
+    apikey = fields.Str(
+        required=True, validate=validate.Length(min=1, max=256)
+    )  # API Key for authentication
     date = fields.Str(required=True)  # Date in YYYY-MM-DD format
 
 
@@ -229,7 +239,9 @@ class OptionSymbolRequest(Schema):
 class MultiOptionGreeksSchema(Schema):
     """Schema for batch option greeks requests"""
 
-    apikey = fields.Str(required=True, validate=validate.Length(min=1, max=256))  # API Key for authentication
+    apikey = fields.Str(
+        required=True, validate=validate.Length(min=1, max=256)
+    )  # API Key for authentication
     symbols = fields.List(
         fields.Nested(OptionSymbolRequest),
         required=True,

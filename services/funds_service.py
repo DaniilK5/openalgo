@@ -72,9 +72,37 @@ def get_funds_with_auth(
     try:
         # Get funds data using broker's implementation
         funds = broker_module.get_margin_data(auth_token)
+        if broker.lower() == "bybit" and (
+            not isinstance(funds, dict)
+            or funds.get("status") in {"error", "failed", "failure"}
+            or funds.get("currency") != "USD"
+            or not isinstance(funds.get("coin_balances"), list)
+            or "account_equity_usd" not in funds
+            or any(
+                key not in funds
+                for key in (
+                    "availablecash",
+                    "collateral",
+                    "m2mrealized",
+                    "m2munrealized",
+                    "utiliseddebits",
+                )
+            )
+        ):
+            raise ValueError("Bybit funds adapter returned an invalid response")
 
         return True, {"status": "success", "data": funds}, 200
     except Exception as e:
+        if broker.lower() == "bybit":
+            logger.exception("Bybit funds request failed")
+            return (
+                False,
+                {
+                    "status": "error",
+                    "message": "Unable to retrieve your Bybit account balance. Please try again.",
+                },
+                502,
+            )
         logger.exception(f"Error in broker_module.get_margin_data: {e}")
         return False, {"status": "error", "message": str(e)}, 500
 

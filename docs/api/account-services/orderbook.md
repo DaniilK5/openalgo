@@ -135,6 +135,9 @@ curl -X POST http://127.0.0.1:5000/api/v1/orderbook \
 - Includes completed, cancelled, and rejected orders
 - **Statistics** provide a quick summary
 - Use order IDs for modify/cancel operations
+- Bybit includes Spot, Linear, Inverse, and Options orders, follows Bybit's UTC
+  day boundary, and fetches every available page. Open orders are combined with
+  order history and deduplicated by order ID.
 
 ---
 

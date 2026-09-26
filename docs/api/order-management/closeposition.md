@@ -83,6 +83,7 @@ curl -X POST http://127.0.0.1:5000/api/v1/closeposition \
 | CDS | MIS, NRML |
 | BCD | MIS, NRML |
 | MCX | MIS, NRML |
+| CRYPTO (Bybit) | Linear and Inverse derivatives only |
 
 ## Notes
 
@@ -91,6 +92,7 @@ curl -X POST http://127.0.0.1:5000/api/v1/closeposition \
 - CNC (delivery) positions are also closed if they have intraday quantity
 - Use with caution - there is no confirmation prompt
 - The operation affects **all positions** across all exchanges
+- Bybit close-all refuses to send any closing orders if the account has unsupported Options positions; Spot coin balances are not derivative positions and are not sold.
 - For selective closing, use individual orders instead
 
 ## Use Cases

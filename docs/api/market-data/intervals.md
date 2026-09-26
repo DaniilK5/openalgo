@@ -49,6 +49,7 @@ curl -X POST http://127.0.0.1:5000/api/v1/intervals \
 | Parameter | Description | Mandatory/Optional | Default Value |
 |-----------|-------------|-------------------|---------------|
 | apikey | Your OpenAlgo API key | Mandatory | - |
+| category | Bybit product category: `spot`, `linear`, or `inverse` | Optional | `linear` for Bybit |
 
 ## Response Fields
 
@@ -86,6 +87,8 @@ curl -X POST http://127.0.0.1:5000/api/v1/intervals \
 ## Notes
 
 - Available intervals **vary by broker**
+- Bybit accepts `spot`, `linear`, or `inverse`; options do not provide historical klines
+- Omit Bybit `category` to retain the `linear` default
 - Always check available intervals before requesting [History](./history.md)
 - Some brokers may not support all interval types
 - The response shows only intervals supported by your connected broker

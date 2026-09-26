@@ -1,7 +1,7 @@
 {
     "Plugin Name": "bybit",
     "Plugin URI": "https://openalgo.in",
-    "Description": "Bybit OpenAlgo Plugin — Unified Account Crypto Derivatives (linear only in v1)",
+    "Description": "Bybit Unified Account crypto broker plugin",
     "Version": "1.0",
     "Author": "OpenAlgo",
     "Author URI": "https://openalgo.in",

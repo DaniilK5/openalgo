@@ -132,6 +132,8 @@ curl -X POST http://127.0.0.1:5000/api/v1/placeorder \
   - Options: `NIFTY25AUG2625000CE`
 - Use **MIS** for intraday, **CNC** for equity delivery, **NRML** for F&O overnight positions
 - Fractional quantities are accepted only when `exchange` is `CRYPTO`. Other exchanges reject fractional values during schema validation.
+- For Bybit, the instrument category is resolved from the synchronized symbol list; do not add a category field to the order request. Quantity and price must satisfy that instrument's Bybit precision and limits.
+- Bybit stop orders (`SL` and `SL-M`) are supported for Linear and Inverse derivatives only. Spot orders must use `CNC` or `NRML`; derivatives must use `NRML` or `MIS`.
 
 ---
 

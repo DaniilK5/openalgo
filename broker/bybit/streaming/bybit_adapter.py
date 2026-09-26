@@ -1,6 +1,7 @@
 import json
 import threading
 
+from broker.bybit.api.baseurl import get_private_ws_url, get_public_ws_url
 from broker.bybit.streaming.bybit_mapping import BybitCapabilityRegistry, BybitMapper, BybitModeMapper
 from broker.bybit.streaming.bybit_websocket import BybitWebSocket
 from database.auth_db import get_auth_token
@@ -77,7 +78,7 @@ class BybitWebSocketAdapter(BaseBrokerWebSocketAdapter):
         self.public_ws = BybitWebSocket(
             api_key=self.api_key,
             api_secret=self.api_secret,
-            url=BybitWebSocket.PUBLIC_WS_URL,
+            url=get_public_ws_url("linear"),
             authenticate=False,
             name="public",
             on_message=self._on_public_message,
@@ -87,7 +88,7 @@ class BybitWebSocketAdapter(BaseBrokerWebSocketAdapter):
         self.private_ws = BybitWebSocket(
             api_key=self.api_key,
             api_secret=self.api_secret,
-            url=BybitWebSocket.PRIVATE_WS_URL,
+            url=get_private_ws_url(),
             authenticate=True,
             name="private",
             on_message=self._on_private_message,

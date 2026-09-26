@@ -1,155 +1,237 @@
+from datetime import datetime, timezone
+import math
+
+from database.token_db import get_oa_symbol
+
+
 def _coerce_float(value, default=0.0):
+    if value in (None, ""):
+        return default
     try:
         return float(value)
     except (TypeError, ValueError):
         return default
 
 
+def _required_float(value):
+    amount = _coerce_float(value, None)
+    if amount is None or not math.isfinite(amount):
+        raise ValueError("Bybit account data could not be read. Try again later.")
+    return amount
+
+
 def _extract_rows(raw):
-    if raw is None:
-        return []
     if isinstance(raw, list):
         return raw
-    if isinstance(raw, dict):
-        if isinstance(raw.get("result"), list):
-            return raw["result"]
-        result = raw.get("result") or {}
-        if isinstance(result, dict):
-            for key in ("list", "rows", "data"):
-                rows = result.get(key)
-                if isinstance(rows, list):
-                    return rows
-        if isinstance(raw.get("data"), list):
-            return raw["data"]
-    return []
+    if not isinstance(raw, dict):
+        return []
+    result = raw.get("result")
+    if isinstance(result, list):
+        return result
+    if isinstance(result, dict):
+        rows = result.get("list")
+        return rows if isinstance(rows, list) else []
+    rows = raw.get("data")
+    return rows if isinstance(rows, list) else []
+
+
+def _canonical_symbol(row):
+    native_symbol = row.get("symbol")
+    category = row.get("category")
+    if not isinstance(native_symbol, str) or not native_symbol or not category:
+        raise ValueError("Bybit account data could not be read. Try again later.")
+    symbol = get_oa_symbol(native_symbol, "CRYPTO", category)
+    if not symbol:
+        raise ValueError(
+            "This Bybit symbol is not in the local symbol list. Update the symbol list and retry."
+        )
+    return symbol
+
+
+def _timestamp(value, include_date=False):
+    try:
+        stamp = datetime.fromtimestamp(int(value) / 1000, tz=timezone.utc)
+    except (TypeError, ValueError, OSError) as exc:
+        raise ValueError("Bybit account data could not be read. Try again later.") from exc
+    format_string = "%d-%b-%Y %H:%M:%S" if include_date else "%H:%M:%S"
+    return stamp.strftime(format_string)
 
 
 def _status_to_openalgo(status):
-    status = str(status or "").lower()
-    if status in {"new", "created", "open", "partiallyfilled", "partially_filled", "pending", "working"}:
-        return "open"
-    if status in {"filled", "complete", "completed", "closed"}:
-        return "complete"
-    if status in {"cancelled", "canceled", "cancel"}:
-        return "cancelled"
-    if status in {"rejected", "failed", "expired"}:
-        return "rejected"
-    return status or "open"
+    normalized = str(status or "").lower()
+    statuses = {
+        "new": "open",
+        "partiallyfilled": "open",
+        "untriggered": "pending",
+        "triggered": "open",
+        "pendingcancel": "open",
+        "filled": "complete",
+        "cancelled": "cancelled",
+        "partiallyfilledcanceled": "cancelled",
+        "deactivated": "cancelled",
+        "rejected": "rejected",
+    }
+    if normalized not in statuses:
+        raise ValueError("An order has a status that this OpenAlgo version cannot display yet.")
+    return statuses[normalized]
 
 
-def _side_to_openalgo(side):
-    side = str(side or "").upper()
-    if side in {"BUY", "LONG"}:
-        return "BUY"
-    if side in {"SELL", "SHORT"}:
-        return "SELL"
-    return side
+def _order_type(row):
+    order_type = str(row.get("orderType") or "").upper()
+    if order_type not in {"MARKET", "LIMIT"}:
+        raise ValueError("An order type in the Bybit account history is not supported yet.")
+    if row.get("triggerPrice") not in (None, "", "0", 0, 0.0):
+        return "SL-M" if order_type == "MARKET" else "SL"
+    return order_type
 
 
-def map_order_data(raw):
-    rows = _extract_rows(raw)
+def map_order_data(order_data):
     mapped = []
-    for row in rows:
+    for row in _extract_rows(order_data):
         if not isinstance(row, dict):
             continue
-        mapped.append({
-            "orderId": row.get("orderId") or row.get("order_id") or row.get("id"),
-            "symbol": row.get("symbol", ""),
-            "exchange": "CRYPTO",
-            "action": _side_to_openalgo(row.get("side")),
-            "quantity": row.get("qty") or row.get("orderQty") or row.get("order_qty") or 0,
-            "price": row.get("price") or row.get("avgPrice") or row.get("cumExecValue") or 0,
-            "trigger_price": row.get("triggerPrice") or 0,
-            "pricetype": row.get("orderType") or row.get("order_type") or "LIMIT",
-            "product": "NRML",
-            "order_status": _status_to_openalgo(row.get("orderStatus") or row.get("status")),
-            "timestamp": row.get("createdTime") or row.get("updateTime") or row.get("updatedTime") or 0,
-        })
+        quantity = _coerce_float(row.get("qty"), None)
+        filled = _coerce_float(row.get("cumExecQty"), 0.0)
+        if quantity is None:
+            raise ValueError("Bybit account data could not be read. Try again later.")
+        order_id = row.get("orderId")
+        if not order_id:
+            raise ValueError("Bybit account data could not be read. Try again later.")
+        mapped.append(
+            {
+                "orderid": str(order_id),
+                "symbol": _canonical_symbol(row),
+                "exchange": "CRYPTO",
+                "category": row["category"],
+                "action": str(row.get("side") or "").upper(),
+                "quantity": quantity,
+                "filledqty": filled,
+                "pendingqty": max(quantity - filled, 0.0),
+                "price": _coerce_float(row.get("price"), 0.0),
+                "trigger_price": _coerce_float(row.get("triggerPrice"), 0.0),
+                "pricetype": _order_type(row),
+                "product": "NRML",
+                "order_status": _status_to_openalgo(row.get("orderStatus")),
+                "timestamp": _timestamp(row.get("createdTime"), include_date=True),
+                "reduce_only": bool(row.get("reduceOnly", False)),
+            }
+        )
     return mapped
 
 
-def map_trade_data(raw):
-    rows = _extract_rows(raw)
+def map_trade_data(trade_data):
     mapped = []
-    for row in rows:
+    for row in _extract_rows(trade_data):
         if not isinstance(row, dict):
             continue
-        mapped.append({
-            "symbol": row.get("symbol", ""),
-            "exchange": "CRYPTO",
-            "action": _side_to_openalgo(row.get("side")),
-            "quantity": row.get("execQty") or row.get("qty") or 0,
-            "price": row.get("execPrice") or row.get("price") or 0,
-            "product": "NRML",
-            "timestamp": row.get("tradeTime") or row.get("execTime") or row.get("createdTime") or 0,
-        })
+        quantity = _coerce_float(row.get("execQty"), None)
+        price = _coerce_float(row.get("execPrice"), None)
+        if quantity is None or price is None:
+            raise ValueError("Bybit account data could not be read. Try again later.")
+        mapped.append(
+            {
+                "tradeid": str(row.get("execId") or ""),
+                "orderid": str(row.get("orderId") or ""),
+                "symbol": _canonical_symbol(row),
+                "exchange": "CRYPTO",
+                "category": row["category"],
+                "action": str(row.get("side") or "").upper(),
+                "quantity": quantity,
+                "average_price": price,
+                "product": "NRML",
+                "timestamp": _timestamp(row.get("execTime")),
+                "trade_value": _coerce_float(row.get("execValue"), None),
+            }
+        )
     return mapped
 
 
 def map_position_data(raw):
-    rows = _extract_rows(raw)
     mapped = []
-    for row in rows:
+    for row in _extract_rows(raw):
         if not isinstance(row, dict):
             continue
         size = _coerce_float(row.get("size"), 0.0)
-        mapped.append({
-            "symbol": row.get("symbol", ""),
-            "exchange": "CRYPTO",
-            "product": row.get("positionIdx") if row.get("positionIdx") is not None else "NRML",
-            "quantity": size,
-            "avg_price": _coerce_float(row.get("avgPrice"), 0.0),
-            "ltp": _coerce_float(row.get("markPrice") or row.get("lastPrice"), 0.0),
-            "pnl": _coerce_float(row.get("unrealisedPnl") or row.get("unrealizedPnl"), 0.0),
-            "side": "BUY" if size > 0 else "SELL",
-        })
+        if not size:
+            continue
+        side = str(row.get("side") or "").upper()
+        if side not in {"BUY", "SELL"}:
+            raise ValueError("Bybit account data could not be read. Try again later.")
+        mapped.append(
+            {
+                "symbol": _canonical_symbol(row),
+                "exchange": "CRYPTO",
+                "category": row["category"],
+                "product": "NRML",
+                "quantity": size if side == "BUY" else -size,
+                "average_price": _coerce_float(row.get("avgPrice"), 0.0),
+                "ltp": _coerce_float(row.get("markPrice"), 0.0),
+                "pnl": _coerce_float(row.get("unrealisedPnl"), 0.0),
+                "side": side,
+                "position_idx": row.get("positionIdx", 0),
+            }
+        )
     return mapped
 
 
 def map_portfolio_data(raw):
-    rows = _extract_rows(raw)
     mapped = []
-    for row in rows:
-        if not isinstance(row, dict):
+    for wallet in _extract_rows(raw):
+        if not isinstance(wallet, dict):
             continue
-        size = _coerce_float(row.get("size") or row.get("qty") or row.get("positionValue"), 0.0)
-        mapped.append({
-            "symbol": row.get("symbol", ""),
-            "exchange": "CRYPTO",
-            "quantity": size,
-            "avg_price": _coerce_float(row.get("avgPrice") or row.get("entryPrice"), 0.0),
-            "ltp": _coerce_float(row.get("markPrice") or row.get("lastPrice"), 0.0),
-            "pnl": _coerce_float(row.get("unrealisedPnl") or row.get("unrealizedPnl"), 0.0),
-            "side": "BUY" if size > 0 else "SELL",
-        })
+        coins = wallet.get("coin")
+        if not isinstance(coins, list):
+            raise ValueError("Bybit account data could not be read. Try again later.")
+        for row in coins:
+            if not isinstance(row, dict):
+                raise ValueError("Bybit account data could not be read. Try again later.")
+            coin = row.get("coin")
+            if not isinstance(coin, str) or not coin:
+                raise ValueError("Bybit account data could not be read. Try again later.")
+            mapped.append(
+                {
+                    "symbol": coin,
+                    "exchange": "CRYPTO",
+                    "asset_type": "account_coin_balance",
+                    "quantity": _required_float(row.get("equity")),
+                    "usd_value": _required_float(row.get("usdValue")),
+                    "currency": "USD",
+                }
+            )
     return mapped
 
 
 def calculate_order_statistics(rows):
-    total = len(rows or [])
-    return {"total": total, "filled": 0, "pending": total}
+    rows = rows or []
+    return {
+        "total_buy_orders": sum(row.get("action") == "BUY" for row in rows),
+        "total_sell_orders": sum(row.get("action") == "SELL" for row in rows),
+        "total_completed_orders": sum(row.get("order_status") == "complete" for row in rows),
+        "total_open_orders": sum(row.get("order_status") in {"open", "pending"} for row in rows),
+        "total_rejected_orders": sum(row.get("order_status") == "rejected" for row in rows),
+    }
 
 
 def calculate_portfolio_statistics(rows):
-    total_value = 0.0
-    total_pnl = 0.0
-    for row in rows or []:
-        total_value += _coerce_float(row.get("quantity")) * _coerce_float(row.get("ltp"))
-        total_pnl += _coerce_float(row.get("pnl"))
-    return {"total_value": total_value, "total_pnl": total_pnl, "total_positions": len(rows or [])}
+    rows = rows or []
+    return {
+        "total_value": sum(_coerce_float(row.get("usd_value"), 0.0) for row in rows),
+        "total_positions": len(rows),
+        "currency": "USD",
+    }
 
 
 def transform_order_data(rows):
-    return map_order_data(rows)
+    return rows
 
 
 def transform_tradebook_data(rows):
-    return map_trade_data(rows)
+    return rows
 
 
 def transform_positions_data(rows):
-    return map_position_data(rows)
+    return rows
 
 
 def transform_holdings_data(rows):
-    return map_portfolio_data(rows)
+    return rows

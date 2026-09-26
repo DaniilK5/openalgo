@@ -79,6 +79,7 @@ curl -X POST http://127.0.0.1:5000/api/v1/history \
 | apikey | Your OpenAlgo API key | Mandatory | - |
 | symbol | Trading symbol | Mandatory | - |
 | exchange | Exchange code: NSE, BSE, NFO, BFO, CDS, BCD, MCX | Mandatory | - |
+| category | Bybit product category: `spot`, `linear`, or `inverse` | Optional | `linear` for Bybit |
 | interval | Time interval (see below) | Mandatory | - |
 | start_date | Start date (YYYY-MM-DD) | Mandatory | - |
 | end_date | End date (YYYY-MM-DD) | Mandatory | - |
@@ -117,6 +118,9 @@ curl -X POST http://127.0.0.1:5000/api/v1/history \
 ## Notes
 
 - Historical data availability depends on broker
+- Bybit history supports `spot`, `linear`, and `inverse`; Bybit options do not provide klines
+- For Bybit, omit `category` to use `linear`
+- Bybit converts OpenAlgo's requested IST calendar dates to UTC epoch-millisecond bounds
 - Response timestamps are Unix timestamps. Convert them to the timezone required by the client; do not treat the numeric value itself as an IST-local timestamp.
 - For intraday intervals, data is typically available for the last 30-90 days
 - For daily data, longer history may be available

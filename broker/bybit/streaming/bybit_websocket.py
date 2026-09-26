@@ -7,6 +7,7 @@ import time
 
 import websocket
 
+from broker.bybit.api.baseurl import get_private_ws_url, get_public_ws_url
 from utils.logging import get_logger
 
 logger = get_logger("bybit_websocket")
@@ -33,7 +34,9 @@ class BybitWebSocket:
     ):
         self.api_key = api_key
         self.api_secret = api_secret
-        self.url = url or self.PUBLIC_WS_URL
+        self.url = url or (
+            get_private_ws_url() if authenticate else get_public_ws_url("linear")
+        )
         self.authenticate = authenticate
         self.name = name or ("private" if authenticate else "public")
         self.on_open = on_open or (lambda ws: None)
