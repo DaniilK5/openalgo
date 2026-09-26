@@ -3,7 +3,12 @@ import json
 from datetime import UTC, datetime
 
 from utils import timezones
-from utils.timezones import APP_TIMEZONE, convert_weekly_schedule, format_app_datetime
+from utils.timezones import (
+    APP_TIMEZONE,
+    convert_weekly_schedule,
+    format_app_datetime,
+    to_app_datetime,
+)
 
 
 def test_format_app_datetime_uses_almaty_for_utc_timestamps():
@@ -16,6 +21,14 @@ def test_format_app_datetime_interprets_naive_values_as_utc():
     timestamp = datetime(2026, 9, 26, 0, 0)
 
     assert format_app_datetime(timestamp) == "26-09-2026 05:00:00"
+
+
+def test_to_app_datetime_returns_iso_serializable_datetime_with_app_timezone():
+    timestamp = datetime(2026, 9, 26, 0, 0, tzinfo=UTC)
+
+    converted = to_app_datetime(timestamp)
+
+    assert converted.isoformat() == "2026-09-26T05:00:00+05:00"
 
 
 def test_weekly_schedule_conversion_keeps_weekday_when_clock_crosses_midnight():

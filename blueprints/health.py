@@ -23,7 +23,7 @@ from limiter import limiter
 from utils.health_monitor import check_db_connectivity, get_cached_health_status
 from utils.logging import get_logger
 from utils.session import check_session_validity
-from utils.timezones import format_app_datetime
+from utils.timezones import format_app_datetime, to_app_datetime
 
 logger = get_logger(__name__)
 
@@ -253,7 +253,7 @@ def get_current_metrics():
 
         return jsonify(
             {
-                "timestamp": convert_to_ist(metric.timestamp).isoformat(),
+                "timestamp": to_app_datetime(metric.timestamp).isoformat(),
                 "fd": {
                     "count": metric.fd_count or 0,
                     "limit": metric.fd_limit,
@@ -306,7 +306,7 @@ def get_metrics_history():
         return jsonify(
             [
                 {
-                    "timestamp": convert_to_ist(m.timestamp).isoformat(),
+                    "timestamp": to_app_datetime(m.timestamp).isoformat(),
                     "fd_count": m.fd_count,
                     "memory_rss_mb": m.memory_rss_mb,
                     "db_connections": m.db_connections_total,
@@ -347,7 +347,7 @@ def get_alerts():
             [
                 {
                     "id": alert.id,
-                    "timestamp": convert_to_ist(alert.timestamp).isoformat(),
+                    "timestamp": to_app_datetime(alert.timestamp).isoformat(),
                     "alert_type": alert.alert_type,
                     "severity": alert.severity,
                     "metric_name": alert.metric_name,

@@ -9,7 +9,7 @@ from database.latency_db import OrderLatency, latency_session
 from limiter import limiter
 from utils.logging import get_logger
 from utils.session import check_session_validity
-from utils.timezones import format_app_datetime
+from utils.timezones import format_app_datetime, to_app_datetime
 
 logger = get_logger(__name__)
 
@@ -145,7 +145,7 @@ def latency_dashboard():
                 "total_latency_ms": log.total_latency_ms,
                 "status": log.status,
                 "error": log.error,
-                "timestamp": convert_to_ist(log.timestamp).isoformat(),
+                "timestamp": to_app_datetime(log.timestamp).isoformat(),
             }
         )
 
@@ -169,7 +169,7 @@ def get_logs():
         return jsonify(
             [
                 {
-                    "timestamp": convert_to_ist(log.timestamp).isoformat(),
+                    "timestamp": to_app_datetime(log.timestamp).isoformat(),
                     "id": log.id,
                     "order_id": log.order_id,
                     "broker": log.broker,
