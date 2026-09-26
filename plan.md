@@ -8,8 +8,10 @@
 - Order placement, modification, cancellation, cancel-all, smart-order position lookup, and close-position paths have category-aware local implementations. Order requests validate instrument metadata, quantity steps, price ticks, and supported product/order combinations.
 - Bybit realtime order scans now retry category-specific required filters (`settleCoin`/`baseCoin`) so `/v5/order/realtime` no longer fails with retCode 10001 when category-only queries are rejected.
 - Bybit market-data date parsing now uses Kazakhstan timezone (`Asia/Almaty`) instead of `Asia/Kolkata`.
-- The latest targeted Bybit suite passed: 63 tests. Selected Ruff checks and `git diff --check` also passed.
-- This is not live-validated. The prior authenticated call returned HTTP 401 with an empty body; no live account-data requests, real orders, or authenticated WebSocket checks were run in this worktree.
+- Bybit REST calls now use pybit's typed V5 methods for authentication, public market data, instrument master, account data, and order lifecycle requests. Its request signing and retry handling replace the plugin's custom REST signature code; the shared pybit HTTP session is closed on reconfiguration and process shutdown. Under eventlet, blocking SDK calls run via its thread pool and are serialized to protect the shared requests session.
+- The pybit REST client uses a 10-second receive window and retries Bybit timestamp-window rejections. The observed ~5.9-second server offset should fit this window, but live account verification is still required.
+- The latest targeted Bybit suite passed: 68 tests. The private/public WebSocket implementation remains separate and has not been migrated to pybit or live-validated.
+- This is not live-validated. The latest reported REST errors were retCode 10002 (about 5.9 seconds of clock skew) and retCode 10004 (signature mismatch); no live account-data requests, real orders, or authenticated WebSocket checks were run after the pybit migration.
 - Do not treat a successful OpenAlgo login or analyzer-mode order as proof of Bybit authentication or order execution. Analyzer mode does not reach the broker API.
 
 ## Immediate user-side check: choose the right credential for the test

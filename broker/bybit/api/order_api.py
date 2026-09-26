@@ -1,12 +1,10 @@
 import json
-import os
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from types import SimpleNamespace
 
-from broker.bybit.api.baseurl import get_auth_headers, get_url
+from broker.bybit.api.rest_client import request, request_response
 from database.token_db import get_br_symbol, get_symbol_info
-from utils.httpx_client import get_httpx_client
 from utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -26,58 +24,13 @@ def _as_dict(payload):
 
 
 def _signed_request(endpoint, auth, method="GET", params=None, payload=None):
-    # Bybit requires the signed query string to byte-for-byte match the one
-    # actually sent. get_auth_headers signs params in sorted key order, so the
-    # request itself must use the same sorted order -- otherwise httpx's
-    # insertion-order serialization can disagree with the signature and Bybit
-    # returns retCode=10004 ("error sign") regardless of key permissions.
-    params = dict(sorted((params or {}).items()))
-    api_secret = os.getenv("BROKER_API_SECRET", "").strip()
-    body = json.dumps(payload, separators=(",", ":")) if payload else ""
-    headers = get_auth_headers(
+    return request_response(
+        endpoint,
         method=method,
-        path=endpoint,
         params=params,
-        payload=body,
+        payload=payload,
         api_key=auth,
-        api_secret=api_secret,
     )
-
-    client = get_httpx_client()
-    method_upper = method.upper()
-    if method_upper == "GET":
-        response = client.get(get_url(endpoint), params=params, headers=headers, timeout=30.0)
-    elif method_upper == "DELETE":
-        response = client.delete(get_url(endpoint), params=params, headers=headers, timeout=30.0)
-    else:
-        response = client.post(
-            get_url(endpoint), params=params, data=body, headers=headers, timeout=30.0
-        )
-    if response.status_code != 200:
-        logger.warning(
-            "Bybit account request failed for %s with HTTP %s",
-            endpoint,
-            response.status_code,
-        )
-        raise ValueError(
-            "Bybit could not provide the requested account data. "
-            "Check API key permissions or try again later."
-        )
-    data = _as_dict(response.text if response.content else {})
-    if type(data.get("retCode")) is not int:
-        logger.warning("Bybit returned a malformed account response for %s", endpoint)
-        raise ValueError("Bybit account data could not be read. Try again later.")
-    if data["retCode"] != 0:
-        logger.warning(
-            "Bybit account request was rejected for %s (retCode=%s retMsg=%s)",
-            endpoint,
-            data["retCode"],
-            data.get("retMsg"),
-        )
-        raise ValueError(
-            "Bybit rejected the account request. Check the account settings and try again."
-        )
-    return response
 
 
 def _utc_day_bounds():
@@ -270,16 +223,10 @@ def _validate_order_amount(instrument, quantity, price, category, order_type):
 
 
 def _trigger_direction(category, broker_symbol, trigger_price):
-    response = get_httpx_client().get(
-        get_url("/v5/market/tickers"),
+    data = request(
+        "/v5/market/tickers",
         params={"category": category, "symbol": broker_symbol},
-        timeout=10.0,
     )
-    if response.status_code != 200:
-        raise ValueError("Bybit could not verify the stop trigger. Try again later.")
-    data = _as_dict(response.text if response.content else {})
-    if data.get("retCode") != 0:
-        raise ValueError("Bybit could not verify the stop trigger. Try again later.")
     result = data.get("result")
     rows = result.get("list") if isinstance(result, dict) else None
     if not rows or not isinstance(rows[0], dict):

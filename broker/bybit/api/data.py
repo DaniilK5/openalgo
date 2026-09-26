@@ -1,13 +1,11 @@
-import time
 from datetime import date, datetime, timezone
 from datetime import time as day_time
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from broker.bybit.api.baseurl import get_url
+from broker.bybit.api.rest_client import request
 from database.token_db import get_br_symbol, get_symbol_info
-from utils.httpx_client import get_httpx_client
 
 KZ_TZ = ZoneInfo("Asia/Almaty")
 
@@ -98,16 +96,7 @@ class BrokerData:
         return self.TIMEFRAME_MAP
 
     def _public_get(self, path: str, params=None):
-        params = params or {}
-        response = get_httpx_client().get(get_url(path), params=params, timeout=30.0)
-        if response.status_code == 429:
-            time.sleep(0.5)
-            response = get_httpx_client().get(get_url(path), params=params, timeout=30.0)
-        if response.status_code != 200:
-            raise ValueError(f"Bybit HTTP {response.status_code} for {path}: {response.text[:200]}")
-        data = response.json()
-        if data.get("retCode") != 0:
-            raise ValueError(f"Bybit API error for {path}: {data.get('retMsg')}")
+        data = request(path, params=params)
         return data.get("result", {})
 
     def _ticker_for(self, symbol, category):

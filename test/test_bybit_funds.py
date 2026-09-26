@@ -25,32 +25,14 @@ WALLET_RESPONSE = {
 }
 
 
-class FakeResponse:
-    def __init__(self, status_code=200, data=None, json_error=None):
-        self.status_code = status_code
-        self._data = data
-        self._json_error = json_error
-
-    def json(self):
-        if self._json_error:
-            raise self._json_error
-        return self._data
-
-
 def test_unified_wallet_maps_common_fields_and_usd_coin_balances(monkeypatch):
     request = {}
 
-    class FakeClient:
-        def get(self, url, **kwargs):
-            request.update(url=url, **kwargs)
-            return FakeResponse(data=WALLET_RESPONSE)
-
     monkeypatch.setenv("BROKER_API_SECRET", "test-secret")
-    monkeypatch.setattr(funds, "get_httpx_client", lambda: FakeClient())
     monkeypatch.setattr(
         funds,
-        "get_auth_headers",
-        lambda **kwargs: request.update(signing=kwargs) or {"X-Test": "signed"},
+        "request",
+        lambda endpoint, **kwargs: request.update(endpoint=endpoint, **kwargs) or WALLET_RESPONSE,
     )
 
     result = funds.get_margin_data("test-key")
@@ -78,10 +60,11 @@ def test_unified_wallet_maps_common_fields_and_usd_coin_balances(monkeypatch):
             },
         ],
     }
-    assert request["params"] == {"accountType": "UNIFIED"}
-    assert request["timeout"] == 30.0
-    assert request["headers"] == {"X-Test": "signed"}
-    assert request["signing"]["api_key"] == "test-key"
+    assert request == {
+        "endpoint": "/v5/account/wallet-balance",
+        "params": {"accountType": "UNIFIED"},
+        "api_key": "test-key",
+    }
 
 
 @pytest.mark.parametrize(
@@ -99,24 +82,15 @@ def test_invalid_or_empty_wallet_payloads_raise_instead_of_returning_zero(payloa
         funds._map_wallet_response(payload)
 
 
-def test_http_and_json_errors_raise(monkeypatch):
-    class FakeClient:
-        def get(self, *args, **kwargs):
-            return FakeResponse(status_code=503)
-
+def test_sdk_errors_raise(monkeypatch):
     monkeypatch.setenv("BROKER_API_SECRET", "test-secret")
-    monkeypatch.setattr(funds, "get_httpx_client", lambda: FakeClient())
-    monkeypatch.setattr(funds, "get_auth_headers", lambda **kwargs: {})
+    monkeypatch.setattr(
+        funds,
+        "request",
+        lambda *args, **kwargs: (_ for _ in ()).throw(ValueError("connection failed")),
+    )
 
-    with pytest.raises(ValueError, match="HTTP 503"):
-        funds.get_margin_data("test-key")
-
-    class InvalidJsonClient:
-        def get(self, *args, **kwargs):
-            return FakeResponse(json_error=ValueError("invalid JSON"))
-
-    monkeypatch.setattr(funds, "get_httpx_client", lambda: InvalidJsonClient())
-    with pytest.raises(ValueError, match="not valid JSON"):
+    with pytest.raises(ValueError, match="connection failed"):
         funds.get_margin_data("test-key")
 
 

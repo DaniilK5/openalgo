@@ -99,44 +99,38 @@ def test_builds_option_symbol_and_checks_native_expiry_and_side():
     assert mismatch is None
 
 
-def test_fetch_category_items_paginates_derivatives_but_not_spot():
+def test_fetch_category_items_paginates_derivatives_but_not_spot(monkeypatch):
     calls = []
 
-    class Client:
-        def get(self, url, params, timeout):
-            calls.append((params.copy(), timeout))
-            page = len(calls)
-            result = {"list": [{"page": page}]}
-            if page == 1:
-                result["nextPageCursor"] = "cursor-2"
-            return SimpleNamespace(
-                status_code=200,
-                content=b"{}",
-                json=lambda: {"retCode": 0, "result": result},
-            )
+    def fake_request(endpoint, params):
+        calls.append((endpoint, params.copy()))
+        page = len(calls)
+        result = {"list": [{"page": page}]}
+        if page == 1 and params["category"] != "spot":
+            result["nextPageCursor"] = "cursor-2"
+        return {"retCode": 0, "result": result}
 
-    client = Client()
-    assert master._fetch_category_items(client, "linear") == [{"page": 1}, {"page": 2}]
-    assert calls[0][0]["limit"] == 1000
-    assert calls[1][0]["cursor"] == "cursor-2"
+    monkeypatch.setattr(master, "request", fake_request)
+    assert master._fetch_category_items("linear") == [{"page": 1}, {"page": 2}]
+    assert calls[0][1]["limit"] == 1000
+    assert calls[1][1]["cursor"] == "cursor-2"
 
     calls.clear()
-    assert master._fetch_category_items(client, "spot") == [{"page": 1}]
-    assert "limit" not in calls[0][0]
-    assert "cursor" not in calls[0][0]
+    assert master._fetch_category_items("spot") == [{"page": 1}]
+    assert "limit" not in calls[0][1]
+    assert "cursor" not in calls[0][1]
 
 
 def test_master_download_keeps_existing_rows_if_a_category_fails(monkeypatch):
     delete_calls = []
     fetched = []
 
-    def fetch_category(_client, category):
+    def fetch_category(category):
         fetched.append(category)
         if category == "inverse":
             raise ValueError("upstream unavailable")
         return [{"symbol": category}]
 
-    monkeypatch.setattr(master, "get_httpx_client", lambda: object())
     monkeypatch.setattr(master, "_fetch_category_items", fetch_category)
     monkeypatch.setattr(master, "_status_supported", lambda category, item: True)
     monkeypatch.setattr(

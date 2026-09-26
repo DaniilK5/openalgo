@@ -8,10 +8,9 @@ from sqlalchemy import Column, Float, Index, Integer, Sequence, String, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import scoped_session, sessionmaker
 
-from broker.bybit.api.baseurl import get_url
+from broker.bybit.api.rest_client import request
 from database.engine_factory import create_db_engine
 from extensions import socketio
-from utils.httpx_client import get_httpx_client
 from utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -267,7 +266,7 @@ def _build_instrument(item, category):
     return result
 
 
-def _fetch_category_items(client, category):
+def _fetch_category_items(category):
     cursor = ""
     page_count = 0
     items = []
@@ -281,20 +280,7 @@ def _fetch_category_items(client, category):
             if cursor:
                 params["cursor"] = cursor
 
-        response = client.get(
-            get_url("/v5/market/instruments-info"),
-            params=params,
-            timeout=60.0,
-        )
-        if response.status_code != 200:
-            raise ValueError(
-                f"Bybit {category} instrument fetch failed: HTTP {response.status_code}"
-            )
-
-        payload = response.json() if response.content else {}
-        if not isinstance(payload, dict) or payload.get("retCode") != 0:
-            ret_msg = payload.get("retMsg", "unknown error") if isinstance(payload, dict) else "invalid response"
-            raise ValueError(f"Bybit {category} instrument fetch failed: {ret_msg}")
+        payload = request("/v5/market/instruments-info", params=params)
 
         result = payload.get("result") or {}
         if not isinstance(result, dict) or not isinstance(result.get("list"), list):
@@ -339,10 +325,9 @@ def master_contract_download():
 
     rows = []
     try:
-        client = get_httpx_client()
         for category in ("spot", "linear", "inverse", "option"):
             _emit_master_contract_status("downloading", category=category)
-            items = _fetch_category_items(client, category)
+            items = _fetch_category_items(category)
             if not items:
                 raise ValueError(
                     f"Bybit returned no instruments for {category}; existing symbols were kept"
