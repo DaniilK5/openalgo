@@ -16,8 +16,10 @@ from sqlalchemy import (
     Column,
     DateTime,
     Float,
+    Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.ext.declarative import declarative_base
@@ -98,14 +100,140 @@ class ScalpingTrackedSymbol(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class BybitScalpingSpotOrder(Base):
+    """A scalping-owned Bybit Spot order, reserved before submission."""
+
+    __tablename__ = "scalping_bybit_spot_order"
+    __table_args__ = (
+        UniqueConstraint("user_id", "mode", "order_link_id", name="uq_scalp_bybit_spot_link"),
+        UniqueConstraint("user_id", "order_id", name="uq_scalp_bybit_spot_order"),
+        Index("ix_scalp_bybit_spot_order_link", "user_id", "order_link_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(String(100), nullable=False)
+    mode = Column(String(10), nullable=False)
+    symbol = Column(String(60), nullable=False)
+    exchange = Column(String(10), nullable=False)
+    base_coin = Column(String(20), nullable=False)
+    side = Column(String(4), nullable=False)
+    order_link_id = Column(String(36), nullable=False)
+    order_id = Column(String(100), nullable=True)
+    # Text preserves every submitted decimal digit on SQLite, whose NUMERIC
+    # affinity otherwise converts fractional spot quantities to binary floats.
+    requested_quantity = Column(Text, nullable=False)
+    market_unit = Column(String(20), nullable=False)
+    status = Column(String(20), nullable=False, default="reserved")
+    filled_quantity = Column(Text, nullable=False, default="0")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class BybitScalpingSpotInventory(Base):
+    """Exact decimal ledger of Spot inventory acquired by scalping orders."""
+
+    __tablename__ = "scalping_bybit_spot_inventory"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "symbol", "exchange", "mode", name="uq_scalp_bybit_spot_inventory"
+        ),
+        Index("ix_scalp_bybit_spot_inventory_user_mode", "user_id", "mode"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(String(100), nullable=False)
+    mode = Column(String(10), nullable=False)
+    symbol = Column(String(60), nullable=False)
+    exchange = Column(String(10), nullable=False)
+    base_coin = Column(String(20), nullable=False)
+    owned_quantity = Column(Text, nullable=False, default="0")
+    reserved_quantity = Column(Text, nullable=False, default="0")
+    bought_quantity = Column(Text, nullable=False, default="0")
+    sold_quantity = Column(Text, nullable=False, default="0")
+    quote_spent = Column(Text, nullable=False, default="0")
+    quote_received = Column(Text, nullable=False, default="0")
+    fees_by_currency = Column(Text, nullable=False, default="{}")
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class BybitScalpingSpotExecution(Base):
+    """Execution inbox and ledger; unmatched events remain unapplied until ack."""
+
+    __tablename__ = "scalping_bybit_spot_execution"
+    __table_args__ = (
+        UniqueConstraint("user_id", "exec_id", name="uq_scalp_bybit_spot_execution"),
+        Index("ix_scalp_bybit_spot_execution_order", "user_id", "order_id"),
+        Index("ix_scalp_bybit_spot_execution_pending", "processed", "created_at"),
+        Index(
+            "ix_scalp_bybit_spot_execution_inventory",
+            "user_id",
+            "mode",
+            "symbol",
+            "exchange",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(String(100), nullable=False)
+    exec_id = Column(String(100), nullable=False)
+    order_id = Column(String(100), nullable=False)
+    order_link_id = Column(String(36), nullable=True)
+    mode = Column(String(10), nullable=True)
+    symbol = Column(String(60), nullable=False)
+    exchange = Column(String(10), nullable=False)
+    side = Column(String(4), nullable=False)
+    quantity = Column(Text, nullable=False)
+    price = Column(Text, nullable=False)
+    fee_amount = Column(Text, nullable=False)
+    fee_currency = Column(String(20), nullable=False, default="")
+    broker = Column(String(30), nullable=False)
+    processed = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    processed_at = Column(DateTime(timezone=True), nullable=True)
+
+
 def init_db():
     """Create the scalping tables if they don't exist."""
     from database.db_init_helper import init_db_with_logging
 
     init_db_with_logging(Base, engine, "Scalping DB", logger)
     _migrate_add_columns()
+    _migrate_bybit_inventory_columns()
     _migrate_mode_unique(ScalpingSLState, "scalping_sl_state")
     _migrate_mode_unique(ScalpingTrackedSymbol, "scalping_tracked_symbol")
+
+
+def _migrate_bybit_inventory_columns():
+    """Add ledger fields to tables created by an earlier build."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    with engine.begin() as connection:
+        if "scalping_bybit_spot_inventory" in tables:
+            existing = {
+                column["name"]
+                for column in inspector.get_columns("scalping_bybit_spot_inventory")
+            }
+            if "fees_by_currency" not in existing:
+                connection.execute(
+                    text(
+                        "ALTER TABLE scalping_bybit_spot_inventory "
+                        "ADD COLUMN fees_by_currency TEXT NOT NULL DEFAULT '{}'"
+                    )
+                )
+        if "scalping_bybit_spot_execution" in tables:
+            existing = {
+                column["name"]
+                for column in inspector.get_columns("scalping_bybit_spot_execution")
+            }
+            if "order_link_id" not in existing:
+                connection.execute(
+                    text(
+                        "ALTER TABLE scalping_bybit_spot_execution "
+                        "ADD COLUMN order_link_id VARCHAR(36)"
+                    )
+                )
 
 
 def _migrate_mode_unique(model, table_name: str):

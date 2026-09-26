@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { appTodayDateInput } from '@/lib/dateTime'
 import { type ChargeState, DEFAULT_CHARGES } from '@/lib/portfolioRequest'
 import { useAuthStore } from '@/stores/authStore'
 import { useSipBacktestStore } from '@/stores/sipBacktestStore'
@@ -35,12 +36,6 @@ const FREQUENCIES: { value: SipFrequency; label: string; note: string }[] = [
   { value: 'monthly', label: 'Monthly', note: '12x per year' },
   { value: 'quarterly', label: 'Quarterly', note: '4x per year' },
 ]
-
-function todayISO(offsetYears = 0): string {
-  const d = new Date()
-  d.setFullYear(d.getFullYear() - offsetYears)
-  return d.toISOString().slice(0, 10)
-}
 
 const inr = (n: number) => new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(n)
 
@@ -57,8 +52,8 @@ export default function SipBacktester() {
   const [stepUp, setStepUp] = useState(0)
   const [benchmark, setBenchmark] = useState('NIFTY')
   const [source, setSource] = useState<PriceSource>('api')
-  const [startDate, setStartDate] = useState(todayISO(5))
-  const [endDate, setEndDate] = useState(todayISO(0))
+  const [startDate, setStartDate] = useState(appTodayDateInput(5))
+  const [endDate, setEndDate] = useState(appTodayDateInput())
   const [charges, setCharges] = useState<ChargeState>(DEFAULT_CHARGES)
   const [costExchange, setCostExchange] = useState<'NSE' | 'BSE'>('NSE')
 

@@ -60,11 +60,12 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
+import { APP_TIME_ZONE, convertScheduleTime, LEGACY_SCHEDULE_TIME_ZONE } from '@/lib/dateTime'
 import {
   defaultQtyMode,
   favorablePeakPoints,
   formatDuration,
-  formatIst,
+  formatAppTimestamp,
   formatLivePnl,
   formatPnl,
   formatPrice,
@@ -430,12 +431,12 @@ function LiveTab({
               </span>
               {checkpoint && (
                 <span>
-                  Updated: <span className="font-mono">{formatIst(checkpoint.ts)}</span>
+                  Updated: <span className="font-mono">{formatAppTimestamp(checkpoint.ts)}</span>
                 </span>
               )}
               {showLast && lastRun?.stopped_at && (
                 <span>
-                  Stopped: <span className="font-mono">{formatIst(lastRun.stopped_at)}</span>
+                  Stopped: <span className="font-mono">{formatAppTimestamp(lastRun.stopped_at)}</span>
                 </span>
               )}
             </div>
@@ -600,6 +601,13 @@ function SetupTab({ strategy }: { strategy: Strategy }) {
   const isStopped = strategy.status !== 'running'
   const isSignal = strategy.strategy_kind === 'signal'
   const scheduler = strategy.scheduler
+  const scheduleTimezone = scheduler?.timezone ?? LEGACY_SCHEDULE_TIME_ZONE
+  const displayedStart = scheduler?.start_time
+    ? convertScheduleTime(scheduler.start_time, scheduleTimezone)
+    : '—'
+  const displayedStop = scheduler?.auto_stop_time
+    ? convertScheduleTime(scheduler.auto_stop_time, scheduleTimezone)
+    : '—'
 
   return (
     <div className="space-y-4">
@@ -779,8 +787,8 @@ function SetupTab({ strategy }: { strategy: Strategy }) {
             <>
               <RiskRow label="Enabled" value="yes" />
               <RiskRow label="Days" value={scheduler.days.join(', ')} />
-              <RiskRow label="Start time (IST)" value={scheduler.start_time ?? '—'} />
-              <RiskRow label="Auto-stop time (IST)" value={scheduler.auto_stop_time ?? '—'} />
+              <RiskRow label={`Start time (${APP_TIME_ZONE})`} value={displayedStart} />
+              <RiskRow label={`Auto-stop time (${APP_TIME_ZONE})`} value={displayedStop} />
               <RiskRow label="Default mode" value={scheduler.default_mode} />
             </>
           ) : (
@@ -1104,7 +1112,7 @@ function LocalOrderAudit({ orders }: { orders: Order[] }) {
               {orders.map((order) => (
                 <TableRow key={order.id}>
                   <TableCell className="whitespace-nowrap text-xs">
-                    {formatIst(order.placed_at)}
+                    {formatAppTimestamp(order.placed_at)}
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline" className="font-mono text-[10px]">
@@ -1176,7 +1184,7 @@ function LocalTradeAudit({ orders, loading }: { orders: Order[]; loading: boolea
                 {trades.map((trade) => (
                   <TableRow key={trade.order_id}>
                     <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                      {formatIst(trade.filled_at)}
+                      {formatAppTimestamp(trade.filled_at)}
                     </TableCell>
                     <TableCell className="font-mono text-xs">#{trade.run_id}</TableCell>
                     <TableCell>
@@ -1568,7 +1576,9 @@ function EventsTab({ events }: { events: StrategyEvent[] }) {
               key={event.id}
               className="grid grid-cols-[170px_140px_60px_1fr] items-start gap-2 border-b border-border/40 py-1.5 text-sm last:border-0"
             >
-              <span className="font-mono text-xs text-muted-foreground">{formatIst(event.ts)}</span>
+              <span className="font-mono text-xs text-muted-foreground">
+                {formatAppTimestamp(event.ts)}
+              </span>
               <Badge variant="outline" className="w-fit font-mono text-[10px]">
                 {event.kind}
               </Badge>
@@ -2310,10 +2320,10 @@ function HistoryTab({ runs, orders }: { runs: Run[]; orders: Order[] }) {
                           {trade.num_legs}
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-xs">
-                          {formatIst(trade.entry_time)}
+                          {formatAppTimestamp(trade.entry_time)}
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-xs">
-                          {formatIst(trade.exit_time)}
+                          {formatAppTimestamp(trade.exit_time)}
                         </TableCell>
                         <TableCell className="text-xs">{formatDuration(minutes)}</TableCell>
                         <TableCell>
@@ -2402,13 +2412,13 @@ function HistoryTab({ runs, orders }: { runs: Run[]; orders: Order[] }) {
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs">{trip.qty}</TableCell>
                         <TableCell className="whitespace-nowrap text-xs">
-                          {formatIst(trip.entry_time)}
+                          {formatAppTimestamp(trip.entry_time)}
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs">
                           {trip.entry_price.toFixed(2)}
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-xs">
-                          {formatIst(trip.exit_time)}
+                          {formatAppTimestamp(trip.exit_time)}
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs">
                           {trip.exit_price.toFixed(2)}
@@ -2469,10 +2479,10 @@ function HistoryTab({ runs, orders }: { runs: Run[]; orders: Order[] }) {
                         </Badge>
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-xs">
-                        {formatIst(run.started_at)}
+                        {formatAppTimestamp(run.started_at)}
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-xs">
-                        {formatIst(run.stopped_at)}
+                        {formatAppTimestamp(run.stopped_at)}
                       </TableCell>
                       <TableCell>
                         {run.stop_reason ? (
@@ -2820,7 +2830,8 @@ export default function StrategyDetail() {
       </div>
 
       <div className="text-xs text-muted-foreground">
-        Created {formatIst(strategy.created_at)} · Updated {formatIst(strategy.updated_at)}
+        Created {formatAppTimestamp(strategy.created_at)} · Updated{' '}
+        {formatAppTimestamp(strategy.updated_at)}
         {strategy.current_run_id ? (
           <span className="ml-3">
             · Current run: <span className="font-mono">#{strategy.current_run_id}</span>

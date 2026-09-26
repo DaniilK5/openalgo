@@ -45,6 +45,7 @@ import { Input } from '@/components/ui/input'
 import { type PriceableItem, useLivePrice } from '@/hooks/useLivePrice'
 import { useMarketStatus } from '@/hooks/useMarketStatus'
 import { needsPreviousClose, previousClose } from '@/lib/trading/previousClose'
+import { formatAppTime } from '@/lib/dateTime'
 import type { SearchRow } from '@/lib/trading/terminal'
 import { cn } from '@/lib/utils'
 import { showToast } from '@/utils/toast'
@@ -486,7 +487,7 @@ export function WatchlistPanel({ apiKey, onPick, search, activeSymbol }: Props) 
         : !isFallbackMode
           ? null
           : stale && lastSnapshotAt
-            ? `Not updating. Last updated ${new Date(lastSnapshotAt).toLocaleTimeString()}`
+            ? `Not updating. Last updated ${formatAppTime(lastSnapshotAt)}`
             : 'Live feed unavailable. Refreshing over REST.'
 
   /* ── list actions ─────────────────────────────────────────────────────── */

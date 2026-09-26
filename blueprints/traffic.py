@@ -1,36 +1,23 @@
 import csv
 import io
 import logging
-from datetime import datetime
 
-import pytz
 from flask import Blueprint, Response, jsonify, render_template, request, session
 from sqlalchemy import func
 
 from database.traffic_db import TrafficLog, logs_session
 from limiter import limiter
 from utils.session import check_session_validity
+from utils.timezones import format_app_datetime
 
 logger = logging.getLogger(__name__)
 
 traffic_bp = Blueprint("traffic_bp", __name__, url_prefix="/traffic")
 
 
-def convert_to_ist(timestamp):
-    """Convert UTC timestamp to IST"""
-    if isinstance(timestamp, str):
-        timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-    utc = pytz.timezone("UTC")
-    ist = pytz.timezone("Asia/Kolkata")
-    if timestamp.tzinfo is None:
-        timestamp = utc.localize(timestamp)
-    return timestamp.astimezone(ist)
-
-
-def format_ist_time(timestamp):
-    """Format timestamp in IST with 12-hour format"""
-    ist_time = convert_to_ist(timestamp)
-    return ist_time.strftime("%d-%m-%Y %I:%M:%S %p")
+def format_app_time(timestamp):
+    """Format a UTC log timestamp in the application timezone."""
+    return format_app_datetime(timestamp, format_string="%d-%m-%Y %I:%M:%S %p")
 
 
 def generate_csv(logs):
@@ -56,7 +43,7 @@ def generate_csv(logs):
     for log in logs:
         writer.writerow(
             [
-                format_ist_time(log.timestamp),
+                format_app_time(log.timestamp),
                 log.client_ip,
                 log.method,
                 log.path,
@@ -80,7 +67,7 @@ def traffic_dashboard():
     # Convert TrafficLog objects to dictionaries with IST timestamps
     logs_data = [
         {
-            "timestamp": format_ist_time(log.timestamp),
+            "timestamp": format_app_time(log.timestamp),
             "client_ip": log.client_ip,
             "method": log.method,
             "path": log.path,
@@ -105,7 +92,7 @@ def get_logs():
         return jsonify(
             [
                 {
-                    "timestamp": format_ist_time(log.timestamp),
+                    "timestamp": format_app_time(log.timestamp),
                     "client_ip": log.client_ip,
                     "method": log.method,
                     "path": log.path,

@@ -68,6 +68,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { formatAppDateTime } from '@/lib/dateTime'
 import { Skeleton } from '@/components/ui/skeleton'
 
 /** How often the status route is re-read while a sign-in is waiting. */
@@ -163,7 +164,7 @@ function formatCountdown(seconds: number): string {
 function formatMoment(unixSeconds: number | null): string {
   if (typeof unixSeconds !== 'number' || !Number.isFinite(unixSeconds)) return ''
   const at = new Date(unixSeconds * 1000)
-  return Number.isFinite(at.getTime()) ? at.toLocaleString() : ''
+  return Number.isFinite(at.getTime()) ? formatAppDateTime(at) : ''
 }
 
 /**

@@ -39,6 +39,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { formatAppDateTime } from '@/lib/dateTime'
 import {
   Table,
   TableBody,
@@ -115,24 +116,24 @@ function ClientCard({
         </div>
         <div>
           <span className="font-medium text-foreground">Created: </span>
-          {client.created_at ? new Date(client.created_at).toLocaleString() : '—'}
+          {client.created_at ? formatAppDateTime(client.created_at) : '—'}
         </div>
         {client.approved_at ? (
           <div>
             <span className="font-medium text-foreground">Approved: </span>
-            {new Date(client.approved_at).toLocaleString()}
+            {formatAppDateTime(client.approved_at)}
           </div>
         ) : null}
         {client.revoked_at ? (
           <div>
             <span className="font-medium text-foreground">Revoked: </span>
-            {new Date(client.revoked_at).toLocaleString()}
+            {formatAppDateTime(client.revoked_at)}
           </div>
         ) : null}
         {client.last_used_at ? (
           <div>
             <span className="font-medium text-foreground">Last used: </span>
-            {new Date(client.last_used_at).toLocaleString()}
+            {formatAppDateTime(client.last_used_at)}
           </div>
         ) : null}
       </div>

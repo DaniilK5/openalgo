@@ -102,6 +102,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { isSubscriptionModel, SUBSCRIPTION_BADGE } from '@/lib/agent/subscription'
+import { formatAppDateTime } from '@/lib/dateTime'
 
 /** How many columns a detail row has to span. */
 const COLUMN_COUNT = 8
@@ -156,7 +157,7 @@ function relativeTime(iso: string | null): string {
 function fullStamp(iso: string | null): string {
   if (!iso) return ''
   const stamp = new Date(iso)
-  return Number.isFinite(stamp.getTime()) ? stamp.toLocaleString() : ''
+  return Number.isFinite(stamp.getTime()) ? formatAppDateTime(stamp) : ''
 }
 
 /** The brand name for a provider kind, falling back to the stored value. */

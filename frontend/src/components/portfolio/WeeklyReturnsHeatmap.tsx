@@ -9,6 +9,7 @@
  */
 import { useMemo, useState } from 'react'
 import type { CurvePoint } from '@/api/portfolio'
+import { formatAppDate } from '@/lib/dateTime'
 
 interface Props {
   /** Week-ending return points, one per calendar week, across the whole backtest. */
@@ -16,11 +17,7 @@ interface Props {
 }
 
 const formatWeekEnding = (iso: string) =>
-  new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', {
-    month: 'short',
-    day: '2-digit',
-    timeZone: 'UTC',
-  })
+  formatAppDate(iso, { month: 'short', day: '2-digit' })
 
 export function WeeklyReturnsHeatmap({ series }: Props) {
   const years = useMemo(

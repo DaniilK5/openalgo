@@ -34,6 +34,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { cn, makeFormatCurrency, sanitizeCSV } from '@/lib/utils'
+import { formatAppDateTime } from '@/lib/dateTime'
 import { useAuthStore } from '@/stores/authStore'
 import { onModeChange } from '@/stores/themeStore'
 import type { GttOrder } from '@/types/trading'
@@ -72,9 +73,7 @@ function formatPrices(prices: number[], formatCurrency: (n: number) => string): 
 
 function formatDateTime(iso?: string): string {
   if (!iso) return '-'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleString('en-IN', {
+  return formatAppDateTime(iso, {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
