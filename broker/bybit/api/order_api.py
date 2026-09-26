@@ -26,7 +26,12 @@ def _as_dict(payload):
 
 
 def _signed_request(endpoint, auth, method="GET", params=None, payload=None):
-    params = params or {}
+    # Bybit requires the signed query string to byte-for-byte match the one
+    # actually sent. get_auth_headers signs params in sorted key order, so the
+    # request itself must use the same sorted order -- otherwise httpx's
+    # insertion-order serialization can disagree with the signature and Bybit
+    # returns retCode=10004 ("error sign") regardless of key permissions.
+    params = dict(sorted((params or {}).items()))
     api_secret = os.getenv("BROKER_API_SECRET", "").strip()
     body = json.dumps(payload, separators=(",", ":")) if payload else ""
     headers = get_auth_headers(
@@ -64,9 +69,10 @@ def _signed_request(endpoint, auth, method="GET", params=None, payload=None):
         raise ValueError("Bybit account data could not be read. Try again later.")
     if data["retCode"] != 0:
         logger.warning(
-            "Bybit account request was rejected for %s (retCode=%s)",
+            "Bybit account request was rejected for %s (retCode=%s retMsg=%s)",
             endpoint,
             data["retCode"],
+            data.get("retMsg"),
         )
         raise ValueError(
             "Bybit rejected the account request. Check the account settings and try again."
