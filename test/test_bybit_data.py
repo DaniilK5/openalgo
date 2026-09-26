@@ -1,5 +1,6 @@
-from datetime import date
+from datetime import date, datetime
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import pytest
@@ -20,6 +21,18 @@ from services import intervals_service, quotes_service
 @pytest.fixture(autouse=True)
 def no_symbol_metadata_lookup(monkeypatch):
     monkeypatch.setattr(bybit_data, "get_symbol_info", lambda symbol, exchange: None)
+
+
+def test_timestamp_ms_uses_kazakhstan_timezone_for_date_boundaries():
+    start_ms = bybit_data._timestamp_ms("2026-01-01")
+    end_ms = bybit_data._timestamp_ms("2026-01-01", end_of_day=True)
+    tz = ZoneInfo("Asia/Almaty")
+
+    expected_start = int(datetime(2026, 1, 1, 0, 0, 0, tzinfo=tz).timestamp() * 1000)
+    expected_end = int(datetime(2026, 1, 1, 23, 59, 59, 999999, tzinfo=tz).timestamp() * 1000)
+
+    assert start_ms == expected_start
+    assert end_ms == expected_end
 
 
 def test_quotes_and_depth_use_requested_category(monkeypatch):
@@ -151,7 +164,7 @@ def test_history_category_sorting_and_turnover_not_reported_as_open_interest(mon
     assert candles["oi"].tolist() == [0.0, 0.0]
 
 
-def test_history_date_bounds_use_ist_calendar_days_and_are_inclusive(monkeypatch):
+def test_history_date_bounds_use_kazakhstan_calendar_days_and_are_inclusive(monkeypatch):
     data = BrokerData("test-token")
     captured = {}
 
@@ -171,8 +184,8 @@ def test_history_date_bounds_use_ist_calendar_days_and_are_inclusive(monkeypatch
         category="linear",
     )
 
-    assert captured["start"] == 1_767_205_800_000
-    assert captured["end"] == 1_767_292_199_999
+    assert captured["start"] == 1_767_207_600_000
+    assert captured["end"] == 1_767_293_999_999
 
 
 def test_history_fetches_older_pages_and_returns_chronological_candles(monkeypatch):

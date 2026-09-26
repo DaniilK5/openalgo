@@ -6,6 +6,8 @@
 - `BYBIT_TESTNET=true` routes Bybit REST, server-time checks, master download, and public/private WebSockets to testnet. `BYBIT_BASE_URL` remains the mainnet/regional REST override when testnet is false.
 - Spot, Linear, Inverse, and Options are represented in the symbol master and market-data paths. Spot `minOrderQty` and `maxOrderQty` are now retained for validation.
 - Order placement, modification, cancellation, cancel-all, smart-order position lookup, and close-position paths have category-aware local implementations. Order requests validate instrument metadata, quantity steps, price ticks, and supported product/order combinations.
+- Bybit realtime order scans now retry category-specific required filters (`settleCoin`/`baseCoin`) so `/v5/order/realtime` no longer fails with retCode 10001 when category-only queries are rejected.
+- Bybit market-data date parsing now uses Kazakhstan timezone (`Asia/Almaty`) instead of `Asia/Kolkata`.
 - The latest targeted Bybit suite passed: 63 tests. Selected Ruff checks and `git diff --check` also passed.
 - This is not live-validated. The prior authenticated call returned HTTP 401 with an empty body; no live account-data requests, real orders, or authenticated WebSocket checks were run in this worktree.
 - Do not treat a successful OpenAlgo login or analyzer-mode order as proof of Bybit authentication or order execution. Analyzer mode does not reach the broker API.

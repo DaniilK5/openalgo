@@ -9,7 +9,7 @@ from broker.bybit.api.baseurl import get_url
 from database.token_db import get_br_symbol, get_symbol_info
 from utils.httpx_client import get_httpx_client
 
-IST = ZoneInfo("Asia/Kolkata")
+KZ_TZ = ZoneInfo("Asia/Almaty")
 
 
 def _safe_float(value, default=0.0):
@@ -34,14 +34,14 @@ def _timestamp_ms(value, end_of_day=False):
     if isinstance(value, datetime):
         timestamp = value
         if timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=IST)
+            timestamp = timestamp.replace(tzinfo=KZ_TZ)
         else:
             timestamp = timestamp.astimezone(timezone.utc)
         return int(timestamp.timestamp() * 1000)
 
     if isinstance(value, date):
         boundary = day_time.max if end_of_day else day_time.min
-        timestamp = datetime.combine(value, boundary, tzinfo=IST)
+        timestamp = datetime.combine(value, boundary, tzinfo=KZ_TZ)
         return int(timestamp.timestamp() * 1000)
 
     if isinstance(value, str):

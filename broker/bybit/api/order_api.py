@@ -138,6 +138,52 @@ def _merge_by_order_id(*groups):
     return list(merged.values())
 
 
+def _realtime_param_candidates(category, symbol=None):
+    if symbol:
+        return [{"category": category, "symbol": symbol}]
+
+    candidates = [{"category": category}]
+    if category == "linear":
+        for settle_coin in ("USDT", "USDC"):
+            candidates.append({"category": category, "settleCoin": settle_coin})
+    elif category == "inverse":
+        for settle_coin in ("BTC", "ETH", "USD"):
+            candidates.append({"category": category, "settleCoin": settle_coin})
+    elif category == "option":
+        for base_coin in ("BTC", "ETH"):
+            candidates.append({"category": category, "baseCoin": base_coin})
+    return candidates
+
+
+def _fetch_realtime_orders(auth, category, symbol=None):
+    rows = []
+    last_error = None
+    for index, params in enumerate(_realtime_param_candidates(category, symbol=symbol)):
+        try:
+            fetched_rows = _fetch_pages("/v5/order/realtime", auth, params, page_size=50)
+        except ValueError as exc:
+            last_error = exc
+            continue
+        if symbol or index == 0:
+            rows = fetched_rows
+            break
+        rows.extend(fetched_rows)
+
+    if not rows and last_error is not None:
+        raise last_error
+
+    deduplicated = {}
+    for row in rows:
+        order_id = row.get("orderId")
+        key = (
+            str(order_id)
+            if order_id
+            else f"{row.get('category')}:{row.get('symbol')}:{row.get('createdTime')}"
+        )
+        deduplicated[key] = row
+    return list(deduplicated.values())
+
+
 def _order_instrument(data):
     symbol = data.get("symbol")
     exchange = data.get("exchange")
@@ -429,10 +475,7 @@ def cancel_all_orders_api(data, auth):
     cancelled = []
     failed = []
     for category in categories:
-        params = {"category": category}
-        if broker_symbol:
-            params["symbol"] = broker_symbol
-        rows = _fetch_pages("/v5/order/realtime", auth, params, page_size=50)
+        rows = _fetch_realtime_orders(auth, category, symbol=broker_symbol)
         for row in rows:
             order_id = row.get("orderId")
             symbol = row.get("symbol")
@@ -530,7 +573,7 @@ def get_order_book(auth):
     for category in ("spot", "linear", "inverse", "option"):
         params = {"category": category, "startTime": start_ms, "endTime": end_ms}
         history = _fetch_pages("/v5/order/history", auth, params)
-        realtime = _fetch_pages("/v5/order/realtime", auth, {"category": category})
+        realtime = _fetch_realtime_orders(auth, category)
         rows.extend(
             _merge_by_order_id(
                 _filter_to_current_utc_day(history, start_ms, end_ms),

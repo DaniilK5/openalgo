@@ -90,6 +90,50 @@ def test_tradebook_filters_execution_time_and_fetches_each_category(monkeypatch)
     assert all(row["execTime"] == "150" for row in result["result"])
 
 
+def test_realtime_orders_retry_with_required_filters_when_category_only_is_rejected(monkeypatch):
+    requests = []
+
+    def fake_fetch(endpoint, auth, params, page_size=50, max_pages=100):
+        requests.append(params.copy())
+        if params["category"] == "linear" and "settleCoin" not in params:
+            raise ValueError("Bybit rejected the account request.")
+        return [
+            {
+                "category": params["category"],
+                "orderId": f"linear-{params.get('settleCoin', 'all')}",
+                "createdTime": "150",
+            }
+        ]
+
+    monkeypatch.setattr(order_api, "_fetch_pages", fake_fetch)
+
+    rows = order_api._fetch_realtime_orders("token", "linear")
+
+    assert requests[0] == {"category": "linear"}
+    assert any(request.get("settleCoin") == "USDT" for request in requests)
+    assert {row["orderId"] for row in rows} == {"linear-USDT", "linear-USDC"}
+
+
+def test_cancel_all_scans_categories_via_realtime_helper(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        order_api,
+        "_fetch_realtime_orders",
+        lambda auth, category, symbol=None: calls.append((category, symbol)) or [],
+    )
+
+    cancelled, failed = order_api.cancel_all_orders_api({}, "token")
+
+    assert calls == [
+        ("spot", None),
+        ("linear", None),
+        ("inverse", None),
+        ("option", None),
+    ]
+    assert cancelled == []
+    assert failed == []
+
+
 def test_positionbook_requests_supported_settlement_groups_and_excludes_zero_rows(monkeypatch):
     requests = []
 
