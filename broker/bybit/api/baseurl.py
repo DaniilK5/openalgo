@@ -4,7 +4,7 @@ import os
 import time
 from urllib.parse import urlencode
 
-BASE_URL = os.getenv("BYBIT_BASE_URL", "https://api.bybit.com")
+BASE_URL = os.getenv("BYBIT_BASE_URL", "https://api.bybit.com")  # Default to Bybit's main API URL if not set in environment
 
 
 def get_url(endpoint: str) -> str:
@@ -42,9 +42,19 @@ def get_auth_headers(
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
-        "X-BAPI-APIKEY": key,
+        "X-BAPI-API-KEY": key,
         "X-BAPI-TIMESTAMP": timestamp,
         "X-BAPI-SIGN": signature,
         "X-BAPI-RECV-WINDOW": str(recv_window),
     }
     return headers
+
+
+def get_server_time_ms(client):
+    """Return Bybit server time in milliseconds for clock-skew diagnostics."""
+    response = client.get(get_url("/v5/market/time"), timeout=10.0)
+    response.raise_for_status()
+    data = response.json()
+    if data.get("retCode") != 0:
+        raise ValueError(data.get("retMsg") or "Bybit time endpoint returned an error")
+    return int(data["time"])
