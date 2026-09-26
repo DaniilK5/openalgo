@@ -226,6 +226,15 @@ interface Props {
    */
   onSymbolChange?(paneId: string, key: string | null): void
   /**
+   * Reports this pane's timeframe, so a panel acting on the chart can follow it.
+   *
+   * Fires on every change, from this pane's own toolbar or from anywhere else
+   * that sets one. Without it the only way for a panel to notice a timeframe
+   * was to read the chart on a timer, which is a question asked every second
+   * and answered differently a few times a day.
+   */
+  onIntervalChange?(paneId: string, interval: string): void
+  /**
    * Announces this pane's terminal to the page as it is built, and passes null
    * as it is torn down. The page-level side panels act on a pane rather than
    * owning one, so without this they would have nothing to act on until the
@@ -291,6 +300,7 @@ export function ChartPane({
   sharedStay,
   onFocusPane,
   onSymbolChange,
+  onIntervalChange,
   onTerminalChange,
   onObjectsChange,
   onOpenScriptSource,
@@ -329,6 +339,8 @@ export function ChartPane({
   // the first render's closure for the life of the pane.
   const symbolCbRef = useRef(onSymbolChange)
   symbolCbRef.current = onSymbolChange
+  const intervalCbRef = useRef(onIntervalChange)
+  intervalCbRef.current = onIntervalChange
   const terminalCbRef = useRef(onTerminalChange)
   terminalCbRef.current = onTerminalChange
   const objectsCbRef = useRef(onObjectsChange)
@@ -467,7 +479,11 @@ export function ChartPane({
         else if (kind === 'err') showToast.error(msg)
         else showToast.info(msg)
       },
-      onIntervalChange: (iv) => current && setIntervalState(iv),
+      onIntervalChange: (iv) => {
+        if (!current) return
+        setIntervalState(iv)
+        intervalCbRef.current?.(paneId, iv)
+      },
       onWsState: (s) => current && setWsState(s),
       onSymbolLoaded: (view) => {
         if (!current) return
@@ -670,9 +686,27 @@ export function ChartPane({
   }, [ctx])
 
   /* ── drawing / indicator / view actions (additive) ────────────────────── */
+  /**
+   * Rebuild the catalogue every time the picker opens, not only the first time.
+   *
+   * **A `catalog.length` guard here used to make this run once per page load**,
+   * which quietly defeated the tier below it. `terminal.indicatorCatalog` calls
+   * `loadIndicators`, which re-reads `strategies/indicators/` and
+   * `strategies/openscript/` on purpose and skips what it has already seen, so
+   * that a script saved from the panel appears on the next picker open rather
+   * than after a reload. That is what its comments say it is for, and both
+   * loaders are keyed on modification time to make the repeat call cheap. None
+   * of it ran a second time: a trader who saved a study, or installed one from
+   * the skill, opened the list and could not find it, and nothing said why,
+   * because from the page's point of view nothing had happened.
+   *
+   * The repeat cost is one small JSON fetch per tier plus a map over the
+   * registry. A script already compiled at its current modification time costs
+   * nothing, which is the case on nearly every open.
+   */
   const openIndicators = async () => {
     const t = terminalRef.current
-    if (!t || catalog.length) return
+    if (!t) return
     try {
       setCatalog(await t.indicatorCatalog())
     } catch {
@@ -1185,6 +1219,7 @@ export function ChartPane({
         <AlertsDialog handle={alertsHandle} onClose={() => setAlertsHandle(null)} />
         <IndicatorSettingsDialog
           req={indSettings}
+          chartInterval={interval}
           onApply={(id, patch) => terminalRef.current?.updateIndicatorSettings(id, patch)}
           onDefaults={(id) =>
             terminalRef.current

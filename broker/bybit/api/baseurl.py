@@ -4,6 +4,7 @@ import os
 import time
 from urllib.parse import urlencode
 
+<<<<<<< HEAD
 MAINNET_BASE_URL = "https://api.bybit.com"
 TESTNET_BASE_URL = "https://api-testnet.bybit.com"
 MAINNET_WS_HOST = "stream.bybit.com"
@@ -23,6 +24,9 @@ def get_base_url() -> str:
     if is_testnet():
         return TESTNET_BASE_URL
     return os.getenv("BYBIT_BASE_URL", MAINNET_BASE_URL).strip().rstrip("/")
+=======
+BASE_URL = os.getenv("BYBIT_BASE_URL", "https://api.bybit.com")  # Default to Bybit's main API URL if not set in environment
+>>>>>>> bybit-add
 
 
 def get_url(endpoint: str) -> str:
