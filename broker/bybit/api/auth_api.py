@@ -1,11 +1,7 @@
 import os
 import time
 
-<<<<<<< HEAD
 from broker.bybit.api.baseurl import get_auth_headers, get_server_time_ms, get_url, is_testnet
-=======
-from broker.bybit.api.baseurl import get_auth_headers, get_server_time_ms, get_url
->>>>>>> bybit-add
 from utils.httpx_client import get_httpx_client
 from utils.logging import get_logger
 
@@ -13,16 +9,12 @@ logger = get_logger(__name__)
 
 
 def _request_logging_enabled() -> bool:
-<<<<<<< HEAD
     return os.getenv("BYBIT_LOG_REQUESTS", "true").strip().lower() in {
         "1",
         "true",
         "yes",
         "on",
     }
-=======
-    return os.getenv("BYBIT_LOG_REQUESTS", "").strip().lower() in {"1", "true", "yes", "on"}
->>>>>>> bybit-add
 
 
 def authenticate_broker(code):
@@ -41,13 +33,10 @@ def authenticate_broker(code):
 
     path = "/v5/account/wallet-balance"
     params = {"accountType": "UNIFIED"}
-<<<<<<< HEAD
     logger.info(
         "Bybit authentication environment: %s",
         "testnet" if is_testnet() else "mainnet",
     )
-=======
->>>>>>> bybit-add
     client = get_httpx_client()
     try:
         server_time_ms = get_server_time_ms(client)
