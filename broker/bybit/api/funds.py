@@ -1,14 +1,12 @@
 import os
 from decimal import Decimal, InvalidOperation
 
-from broker.bybit.api.baseurl import get_auth_headers, get_url
-from utils.httpx_client import get_httpx_client
+from broker.bybit.api.rest_client import request
 from utils.logging import get_logger
 
 logger = get_logger(__name__)
 
 _WALLET_PATH = "/v5/account/wallet-balance"
-_TIMEOUT_SECONDS = 30.0
 
 
 def _decimal_field(value, field_name):
@@ -37,11 +35,7 @@ def _map_wallet_response(data):
     if not isinstance(data, dict) or type(data.get("retCode")) is not int:
         raise ValueError("Bybit wallet response is malformed")
     if data["retCode"] != 0:
-        logger.warning(
-            "Bybit wallet endpoint returned retCode=%s retMsg=%s",
-            data["retCode"],
-            data.get("retMsg"),
-        )
+        logger.warning("Bybit wallet endpoint returned retCode=%s", data["retCode"])
         raise ValueError("Bybit wallet request was rejected")
 
     result = data.get("result")
@@ -115,26 +109,9 @@ def get_margin_data(auth):
         logger.error("Bybit wallet request cannot run because credentials are missing")
         raise ValueError("Bybit API credentials are not configured")
 
-    params = {"accountType": "UNIFIED"}
-    headers = get_auth_headers(
-        method="GET",
-        path=_WALLET_PATH,
-        params=params,
-        payload="",
+    data = request(
+        _WALLET_PATH,
+        params={"accountType": "UNIFIED"},
         api_key=api_key,
-        api_secret=api_secret,
     )
-    response = get_httpx_client().get(
-        get_url(_WALLET_PATH),
-        params=params,
-        headers=headers,
-        timeout=_TIMEOUT_SECONDS,
-    )
-    if response.status_code != 200:
-        logger.warning("Bybit wallet endpoint returned HTTP %s", response.status_code)
-        raise ValueError(f"Bybit wallet request returned HTTP {response.status_code}")
-    try:
-        data = response.json()
-    except (ValueError, TypeError) as exc:
-        raise ValueError("Bybit wallet response was not valid JSON") from exc
     return _map_wallet_response(data)

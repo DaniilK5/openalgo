@@ -1,8 +1,7 @@
 import json
 import os
 
-from broker.bybit.api.baseurl import get_auth_headers, get_url
-from utils.httpx_client import get_httpx_client
+from broker.bybit.api.rest_client import request
 from utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -16,19 +15,29 @@ def validate_public_contract(symbol: str = "BTCUSDT", limit: int = 1):
     result contains the fields required for a later master-contract parser.
     """
     params = {"category": "linear", "symbol": symbol, "limit": limit}
-    response = get_httpx_client().get(
-        get_url("/v5/market/instruments-info"),
-        params=params,
-        timeout=30.0,
-    )
-
-    data = response.json() if response.content else {}
+    try:
+        data = request("/v5/market/instruments-info", params=params)
+    except ValueError as exc:
+        return {
+            "status_code": None,
+            "ret_code": None,
+            "ret_msg": str(exc),
+            "endpoint": "/v5/market/instruments-info",
+            "sample_symbol": None,
+            "sample_keys": [],
+            "has_category": False,
+            "has_symbol": False,
+            "has_status": False,
+            "has_lot_size": False,
+            "has_tick_size": False,
+            "has_contract_type": False,
+        }
     result = data.get("result", {}) if isinstance(data, dict) else {}
     items = result.get("list", []) if isinstance(result, dict) else []
     sample = items[0] if items else {}
 
     return {
-        "status_code": response.status_code,
+        "status_code": 200,
         "ret_code": data.get("retCode"),
         "ret_msg": data.get("retMsg"),
         "endpoint": "/v5/market/instruments-info",
@@ -59,27 +68,23 @@ def validate_signed_account_contract():
 
     path = "/v5/account/wallet-balance"
     params = {"accountType": "UNIFIED"}
-    headers = get_auth_headers(
-        method="GET",
-        path=path,
-        params=params,
-        payload="",
-        api_key=api_key,
-        api_secret=api_secret,
-    )
-    response = get_httpx_client().get(
-        get_url(path),
-        params=params,
-        headers=headers,
-        timeout=30.0,
-    )
-    data = response.json() if response.content else {}
+    try:
+        data = request(path, params=params, api_key=api_key)
+    except ValueError as exc:
+        return {
+            "status": "failed",
+            "status_code": None,
+            "ret_code": None,
+            "ret_msg": str(exc),
+            "balances_count": 0,
+            "endpoint": path,
+        }
 
     result = data.get("result", {}) if isinstance(data, dict) else {}
     balances = result.get("list", []) if isinstance(result, dict) else []
     return {
-        "status": "success" if response.status_code == 200 and data.get("retCode") == 0 else "failed",
-        "status_code": response.status_code,
+        "status": "success" if data.get("retCode") == 0 else "failed",
+        "status_code": 200,
         "ret_code": data.get("retCode"),
         "ret_msg": data.get("retMsg"),
         "balances_count": len(balances),

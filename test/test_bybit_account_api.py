@@ -166,31 +166,30 @@ def test_positionbook_requests_supported_settlement_groups_and_excludes_zero_row
     ]
 
 
-def test_signed_request_rejects_non_success_http_and_bybit_codes(monkeypatch):
-    class Client:
-        def __init__(self, response):
-            self.response = response
-
-        def get(self, *args, **kwargs):
-            return self.response
-
-    monkeypatch.setattr(order_api, "get_auth_headers", lambda **kwargs: {})
+def test_signed_request_uses_pybit_response_adapter(monkeypatch):
+    request = {}
+    response = order_api._order_response(_response({"orderId": "test-order"}))
     monkeypatch.setattr(
         order_api,
-        "get_httpx_client",
-        lambda: Client(_response({}, status_code=401)),
+        "request_response",
+        lambda endpoint, **kwargs: request.update(endpoint=endpoint, **kwargs) or response,
     )
-    with pytest.raises(ValueError, match="could not provide the requested account data"):
-        order_api._signed_request("/v5/order/history", "token")
 
-    body = json.dumps({"retCode": 10001, "retMsg": "invalid request", "result": {}})
-    monkeypatch.setattr(
-        order_api,
-        "get_httpx_client",
-        lambda: Client(SimpleNamespace(status_code=200, content=body.encode(), text=body)),
+    result = order_api._signed_request(
+        "/v5/order/create",
+        "test-key",
+        method="POST",
+        payload={"category": "spot", "symbol": "BTCUSDT"},
     )
-    with pytest.raises(ValueError, match="rejected the account request"):
-        order_api._signed_request("/v5/order/history", "token")
+
+    assert result is response
+    assert request == {
+        "endpoint": "/v5/order/create",
+        "method": "POST",
+        "params": None,
+        "payload": {"category": "spot", "symbol": "BTCUSDT"},
+        "api_key": "test-key",
+    }
 
 
 def test_spot_order_uses_native_symbol_and_spot_category(monkeypatch):
@@ -412,15 +411,13 @@ def test_close_all_refuses_before_sending_when_options_positions_are_present(mon
 def test_trigger_direction_compares_trigger_to_current_price(
     monkeypatch, trigger, expected_direction
 ):
-    class Client:
-        def get(self, *args, **kwargs):
-            return SimpleNamespace(
-                status_code=200,
-                content=b'{"retCode":0,"result":{"list":[{"lastPrice":"100"}]}}',
-                text='{"retCode":0,"result":{"list":[{"lastPrice":"100"}]}}',
-            )
-
-    monkeypatch.setattr(order_api, "get_httpx_client", lambda: Client())
+    monkeypatch.setattr(
+        order_api,
+        "request",
+        lambda endpoint, params: {
+            "result": {"list": [{"lastPrice": "100"}]}
+        },
+    )
     assert order_api._trigger_direction("linear", "BTCUSDT", trigger) == expected_direction
 
 
