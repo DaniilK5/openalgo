@@ -563,6 +563,32 @@ def bybit_instruments():
         .limit(100)
         .all()
     )
+    if not rows:
+        has_category = (
+            bybit_session.query(BybitSymToken.id)
+            .filter(
+                BybitSymToken.category == category,
+                BybitSymToken.exchange == "CRYPTO",
+            )
+            .first()
+        )
+        if has_category is None:
+            category_name = {
+                "spot": "Spot",
+                "linear": "Linear futures",
+                "inverse": "Inverse futures",
+                "option": "Options",
+            }[category]
+            return jsonify(
+                {
+                    "status": "error",
+                    "message": (
+                        f"The Bybit {category_name} instrument list is missing or outdated. "
+                        "Open Master Contract and choose Force Download."
+                    ),
+                }
+            ), 503
+
     return jsonify(
         {
             "status": "success",

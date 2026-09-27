@@ -75,6 +75,7 @@ def test_bybit_instrument_search_filters_master_by_category(monkeypatch):
         settle_coin=None,
     )
     query_result = Mock()
+    query_result.filter.return_value.first.return_value = (1,)
     query_result.filter.return_value.order_by.return_value.limit.return_value.all.return_value = [
         row
     ]
@@ -105,6 +106,27 @@ def test_bybit_instrument_search_filters_master_by_category(monkeypatch):
         }
     ]
     session.query.assert_called_once_with(master_contract_db.SymToken)
+
+
+def test_bybit_instrument_search_reports_missing_category_master(monkeypatch):
+    from broker.bybit.database import master_contract_db
+
+    query_result = Mock()
+    query_result.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
+    query_result.filter.return_value.first.return_value = None
+    session = Mock()
+    session.query.return_value = query_result
+    monkeypatch.setattr(master_contract_db, "db_session", session)
+    client = _client(monkeypatch)
+
+    response = client.get("/scalping/api/bybit/instruments?category=spot&query=BTC")
+
+    assert response.status_code == 503
+    assert response.get_json()["status"] == "error"
+    assert "Force Download" in response.get_json()["message"]
+    assert any(
+        call.args[0] is master_contract_db.SymToken.id for call in session.query.call_args_list
+    )
 
 
 def test_bybit_spot_order_rejects_market_unit_mismatch(monkeypatch):

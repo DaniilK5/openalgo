@@ -294,6 +294,11 @@ def async_master_contract_download(broker):
     # Use the dynamically imported module's master_contract_download function
     try:
         master_contract_status = master_contract_module.master_contract_download()
+        if master_contract_status is False:
+            error_message = "Could not update the instrument list. Check the broker connection and try again."
+            update_status(broker, "error", error_message)
+            logger.warning("Master contract download returned failure for %s", broker)
+            return {"status": "error", "message": error_message}
 
         # Brokers disagree on what `name` holds for a derivative row - the
         # underlying root, or the contract description. Every lookup that
