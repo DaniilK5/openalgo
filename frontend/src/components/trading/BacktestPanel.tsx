@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type PriceableItem, useLivePrice } from '@/hooks/useLivePrice'
+import { APP_LOCALE, formatAppDateTime } from '@/lib/dateTime'
 import { cn } from '@/lib/utils'
 import {
   type BacktestOutcome,
@@ -142,8 +143,7 @@ function orDash(value: unknown, render: (v: unknown) => string): string {
  * A bar's time as the chart would label it: in the instrument's own zone.
  *
  * The zone is the one the run read its clock in. Without one, or with one this
- * browser cannot read, it is this browser's own clock, which is still a time a
- * trader can find on the chart.
+ * browser cannot read, use the application's display timezone.
  */
 function barClock(time: number, zone: string | undefined): string {
   const shape: Intl.DateTimeFormatOptions = {
@@ -155,9 +155,9 @@ function barClock(time: number, zone: string | undefined): string {
     hourCycle: 'h23',
   }
   try {
-    return new Intl.DateTimeFormat(undefined, { ...shape, timeZone: zone }).format(time)
+    return new Intl.DateTimeFormat(APP_LOCALE, { ...shape, timeZone: zone }).format(time)
   } catch {
-    return new Intl.DateTimeFormat(undefined, shape).format(time)
+    return formatAppDateTime(time, shape)
   }
 }
 

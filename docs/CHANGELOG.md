@@ -8,6 +8,16 @@ fix, live in [docs/releases](releases/).
 
 ## [Unreleased]
 
+### Added
+
+- **Bybit markets arrive in the Scalping terminal.** The Bybit view searches
+  Spot, Linear, Inverse, and Options instruments and streams quotes and depth.
+  Spot Buy uses a USDT/USDC quote budget; Spot Sell is restricted to coin fills
+  recorded by Scalping, so pre-existing wallet assets are not sold by mistake.
+  Run `cd upgrade && uv run migrate_all.py` before using the new inventory
+  ledger. Spot automatic stops, limits, and WebSocket order entry are not
+  included.
+
 ### Fixed
 
 - **Ubuntu installs on 2.0.2.6 could not run OpenScript strategies or the

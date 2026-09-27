@@ -34,6 +34,10 @@ export default defineConfig({
         target: 'http://localhost:5000',
         changeOrigin: true,
       },
+      '/app-timezone.js': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+      },
       '/socket.io': {
         target: 'http://localhost:5000',
         ws: true,

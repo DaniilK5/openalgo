@@ -9,6 +9,7 @@ from database.settings_db import get_security_settings, set_security_settings
 from database.traffic_db import Error404Tracker, InvalidAPIKeyTracker, IPBan, logs_session
 from limiter import limiter
 from utils.session import check_session_validity
+from utils.timezones import format_app_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +56,14 @@ def security_dashboard():
             {
                 "ip_address": ban.ip_address,
                 "ban_reason": ban.ban_reason,
-                "banned_at": ban.banned_at.strftime("%d-%m-%Y %I:%M:%S %p")
+                "banned_at": format_app_datetime(
+                    ban.banned_at, format_string="%d-%m-%Y %I:%M:%S %p"
+                )
                 if ban.banned_at
                 else "Unknown",
-                "expires_at": ban.expires_at.strftime("%d-%m-%Y %I:%M:%S %p")
+                "expires_at": format_app_datetime(
+                    ban.expires_at, format_string="%d-%m-%Y %I:%M:%S %p"
+                )
                 if ban.expires_at
                 else "Permanent",
                 "is_permanent": ban.is_permanent,
@@ -72,10 +77,14 @@ def security_dashboard():
             {
                 "ip_address": tracker.ip_address,
                 "error_count": tracker.error_count,
-                "first_error_at": tracker.first_error_at.strftime("%d-%m-%Y %I:%M:%S %p")
+                "first_error_at": format_app_datetime(
+                    tracker.first_error_at, format_string="%d-%m-%Y %I:%M:%S %p"
+                )
                 if tracker.first_error_at
                 else "Unknown",
-                "last_error_at": tracker.last_error_at.strftime("%d-%m-%Y %I:%M:%S %p")
+                "last_error_at": format_app_datetime(
+                    tracker.last_error_at, format_string="%d-%m-%Y %I:%M:%S %p"
+                )
                 if tracker.last_error_at
                 else "Unknown",
                 "paths_attempted": tracker.paths_attempted,
@@ -87,10 +96,14 @@ def security_dashboard():
             {
                 "ip_address": tracker.ip_address,
                 "attempt_count": tracker.attempt_count,
-                "first_attempt_at": tracker.first_attempt_at.strftime("%d-%m-%Y %I:%M:%S %p")
+                "first_attempt_at": format_app_datetime(
+                    tracker.first_attempt_at, format_string="%d-%m-%Y %I:%M:%S %p"
+                )
                 if tracker.first_attempt_at
                 else "Unknown",
-                "last_attempt_at": tracker.last_attempt_at.strftime("%d-%m-%Y %I:%M:%S %p")
+                "last_attempt_at": format_app_datetime(
+                    tracker.last_attempt_at, format_string="%d-%m-%Y %I:%M:%S %p"
+                )
                 if tracker.last_attempt_at
                 else "Unknown",
                 "api_keys_tried": tracker.api_keys_tried,
@@ -309,10 +322,14 @@ def security_data():
             {
                 "ip_address": ban.ip_address,
                 "ban_reason": ban.ban_reason,
-                "banned_at": ban.banned_at.strftime("%d-%m-%Y %I:%M:%S %p")
+                "banned_at": format_app_datetime(
+                    ban.banned_at, format_string="%d-%m-%Y %I:%M:%S %p"
+                )
                 if ban.banned_at
                 else "Unknown",
-                "expires_at": ban.expires_at.strftime("%d-%m-%Y %I:%M:%S %p")
+                "expires_at": format_app_datetime(
+                    ban.expires_at, format_string="%d-%m-%Y %I:%M:%S %p"
+                )
                 if ban.expires_at
                 else "Permanent",
                 "is_permanent": ban.is_permanent,
@@ -326,10 +343,14 @@ def security_data():
             {
                 "ip_address": tracker.ip_address,
                 "error_count": tracker.error_count,
-                "first_error_at": tracker.first_error_at.strftime("%d-%m-%Y %I:%M:%S %p")
+                "first_error_at": format_app_datetime(
+                    tracker.first_error_at, format_string="%d-%m-%Y %I:%M:%S %p"
+                )
                 if tracker.first_error_at
                 else "Unknown",
-                "last_error_at": tracker.last_error_at.strftime("%d-%m-%Y %I:%M:%S %p")
+                "last_error_at": format_app_datetime(
+                    tracker.last_error_at, format_string="%d-%m-%Y %I:%M:%S %p"
+                )
                 if tracker.last_error_at
                 else "Unknown",
                 "paths_attempted": tracker.paths_attempted,
@@ -341,10 +362,14 @@ def security_data():
             {
                 "ip_address": tracker.ip_address,
                 "attempt_count": tracker.attempt_count,
-                "first_attempt_at": tracker.first_attempt_at.strftime("%d-%m-%Y %I:%M:%S %p")
+                "first_attempt_at": format_app_datetime(
+                    tracker.first_attempt_at, format_string="%d-%m-%Y %I:%M:%S %p"
+                )
                 if tracker.first_attempt_at
                 else "Unknown",
-                "last_attempt_at": tracker.last_attempt_at.strftime("%d-%m-%Y %I:%M:%S %p")
+                "last_attempt_at": format_app_datetime(
+                    tracker.last_attempt_at, format_string="%d-%m-%Y %I:%M:%S %p"
+                )
                 if tracker.last_attempt_at
                 else "Unknown",
                 "api_keys_tried": tracker.api_keys_tried,
@@ -511,6 +536,7 @@ def active_sessions_list():
     """Get all active sessions for the security dashboard."""
     try:
         from flask import session
+
         from database.auth_db import get_active_sessions
 
         username = session.get("user")

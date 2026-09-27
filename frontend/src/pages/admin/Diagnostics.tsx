@@ -330,6 +330,10 @@ export default function Diagnostics() {
           <div>
             <KV label="Server time" value={info?.time.server_time} />
             <KV label="Server timezone" value={info?.time.server_tz} />
+            <KV
+              label={`Application time (${info?.time.app_timezone ?? 'Asia/Almaty'})`}
+              value={info?.time.app_time}
+            />
             <KV label="IST time" value={info?.time.ist_time} />
           </div>
         </Section>
@@ -442,7 +446,7 @@ export default function Diagnostics() {
       >
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <div className="text-sm text-muted-foreground">
-            {diagRanAt ? `Last run: ${diagRanAt}` : 'Not run yet'}
+            {diagRanAt ? `Last run (Asia/Almaty): ${diagRanAt}` : 'Not run yet'}
           </div>
           <Button onClick={runDiagnostics} disabled={isRunningDiag} size="sm">
             <RefreshCw className={`h-4 w-4 mr-1 ${isRunningDiag ? 'animate-spin' : ''}`} />

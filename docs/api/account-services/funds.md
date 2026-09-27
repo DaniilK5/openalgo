@@ -65,6 +65,9 @@ curl -X POST http://127.0.0.1:5000/api/v1/funds \
 | m2mrealized | string | Realized Mark-to-Market profit/loss |
 | m2munrealized | string | Unrealized Mark-to-Market profit/loss |
 | utiliseddebits | string | Margin utilized for positions |
+| account_equity_usd | string | Bybit only: total Unified Account equity valued in USD |
+| currency | string | Bybit only: currency used for the account-equity value |
+| coin_balances | array | Bybit only: per-coin equity and USD value; coin quantities are never added together |
 
 ## Understanding Funds
 
@@ -83,6 +86,10 @@ curl -X POST http://127.0.0.1:5000/api/v1/funds \
 - **collateral** is margin from pledged holdings (varies by broker)
 - M2M values update in real-time with market prices
 - Total margin = availablecash + collateral
+- Bybit reports `account_equity_usd` from the Unified Account total equity. Each
+  `coin_balances` row keeps the coin quantity separate from its USD value.
+- If Bybit cannot return or validate wallet data, the endpoint returns an error
+  instead of treating the account as having a zero balance.
 
 ---
 

@@ -78,6 +78,8 @@ export interface ScalpingOrderRequest {
   action: ScalpingAction
   quantity: number
   product: ScalpingProduct
+  market_unit?: 'baseCoin' | 'quoteCoin'
+  category?: 'spot' | 'linear' | 'inverse' | 'option'
   lots?: number // sent on manual entry so the lot cap is enforced server-side
   ltp?: number // live WS LTP; used as a prefetched quote so sandbox skips its quote fetch
 }
@@ -86,6 +88,9 @@ export interface ScalpingOrderResponse {
   status: string
   orderid?: string
   message?: string
+  mode?: string
+  pending_order_id?: number
+  inventory_warning?: string
 }
 
 // Stop-loss / trailing-SL state persisted per (symbol, exchange, product) leg.

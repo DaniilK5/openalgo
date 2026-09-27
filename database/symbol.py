@@ -45,6 +45,18 @@ class SymToken(Base):
     instrumenttype = Column(String)
     tick_size = Column(Float)
     contract_value = Column(Float)
+    category = Column(String(16))
+    qty_step = Column(Float)
+    min_qty = Column(Float)
+    max_qty = Column(Float)
+    base_precision = Column(Float)
+    quote_precision = Column(Float)
+    min_order_amt = Column(Float)
+    max_market_qty = Column(Float)
+    max_limit_qty = Column(Float)
+    base_coin = Column(String(20))
+    quote_coin = Column(String(20))
+    settle_coin = Column(String(20))
 
     # Composite indices for improved search performance
     __table_args__ = (

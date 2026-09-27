@@ -38,6 +38,13 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  APP_TIME_ZONE,
+  convertScheduleTime,
+  convertWeeklySchedule,
+  formatAppDateTime,
+  LEGACY_SCHEDULE_TIME_ZONE,
+} from '@/lib/dateTime'
 import type { MasterContractStatus, PythonStrategy } from '@/types/python-strategy'
 import { SCHEDULE_DAYS, STATUS_COLORS, STATUS_LABELS } from '@/types/python-strategy'
 import { showToast } from '@/utils/toast'
@@ -223,12 +230,7 @@ export default function PythonStrategyIndex() {
 
   const formatTime = (timeStr: string | null) => {
     if (!timeStr) return '-'
-    return new Date(timeStr).toLocaleString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
+    return formatAppDateTime(timeStr)
   }
 
   // Stats
@@ -345,7 +347,8 @@ export default function PythonStrategyIndex() {
       {/* Current Time */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Clock className="h-4 w-4" />
-        Current IST: {currentTime.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
+        Current time in {APP_TIME_ZONE}:{' '}
+        {formatAppDateTime(currentTime)}
       </div>
 
       {/* Strategies Grid */}
@@ -429,10 +432,18 @@ export default function PythonStrategyIndex() {
                   <div className="flex items-center gap-2">
                     <Calendar className="h-4 w-4 text-blue-500" />
                     <span>
-                      {strategy.schedule_start_time || '09:00'}
+                      {convertWeeklySchedule(
+                        strategy.schedule_start_time || '09:00',
+                        strategy.schedule_days ?? [],
+                        strategy.schedule_timezone ?? LEGACY_SCHEDULE_TIME_ZONE
+                      ).time}
                       {' - '}
-                      {strategy.schedule_stop_time || '16:00'}
+                      {convertScheduleTime(
+                        strategy.schedule_stop_time || '16:00',
+                        strategy.schedule_timezone ?? LEGACY_SCHEDULE_TIME_ZONE
+                      )}
                     </span>
+                    <span className="text-[10px] text-muted-foreground">{APP_TIME_ZONE}</span>
                     {strategy.exchange && (
                       <span className="ml-auto px-1.5 py-0.5 text-[10px] font-medium rounded bg-blue-500/20 text-blue-700 dark:text-blue-300">
                         {strategy.exchange}
@@ -441,9 +452,13 @@ export default function PythonStrategyIndex() {
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
                     {formatScheduleDays(
-                      strategy.schedule_days?.length
-                        ? strategy.schedule_days
-                        : ['mon', 'tue', 'wed', 'thu', 'fri']
+                      convertWeeklySchedule(
+                        strategy.schedule_start_time || '09:00',
+                        strategy.schedule_days?.length
+                          ? strategy.schedule_days
+                          : ['mon', 'tue', 'wed', 'thu', 'fri'],
+                        strategy.schedule_timezone ?? LEGACY_SCHEDULE_TIME_ZONE
+                      ).days
                     )}
                   </p>
                 </div>
@@ -535,7 +550,14 @@ export default function PythonStrategyIndex() {
                     </TooltipTrigger>
                     <TooltipContent>
                       {strategy.schedule_start_time && strategy.schedule_stop_time
-                        ? `${strategy.schedule_start_time} - ${strategy.schedule_stop_time}`
+                        ? `${convertWeeklySchedule(
+                            strategy.schedule_start_time,
+                            strategy.schedule_days ?? [],
+                            strategy.schedule_timezone ?? LEGACY_SCHEDULE_TIME_ZONE
+                          ).time} - ${convertScheduleTime(
+                            strategy.schedule_stop_time,
+                            strategy.schedule_timezone ?? LEGACY_SCHEDULE_TIME_ZONE
+                          )} (${APP_TIME_ZONE})`
                         : 'Edit schedule'}
                     </TooltipContent>
                   </Tooltip>

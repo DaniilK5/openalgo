@@ -15,6 +15,7 @@ export interface PythonStrategy {
   manually_stopped?: boolean
   schedule_start_time: string | null
   schedule_stop_time: string | null
+  schedule_timezone?: string
   schedule_days: string[]
   created_at: string
   updated_at: string
@@ -54,6 +55,7 @@ export interface ScheduleConfig {
   stop_time: string
   days: string[]
   exchange?: string
+  timezone?: string
 }
 
 // Exchanges that drive the strategy's calendar/holiday awareness in /python.

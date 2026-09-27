@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { formatAppDateTime } from '@/lib/dateTime'
 import { showToast } from '@/utils/toast'
 
 interface TwoFactorStatus {
@@ -244,7 +245,7 @@ export default function TwoFactorEnforcement() {
 
         {status?.last_totp_verified_at ? (
           <p className="text-xs text-muted-foreground">
-            Last TOTP verification: {new Date(status.last_totp_verified_at).toLocaleString()}
+            Last TOTP verification: {formatAppDateTime(status.last_totp_verified_at)}
           </p>
         ) : null}
       </CardContent>

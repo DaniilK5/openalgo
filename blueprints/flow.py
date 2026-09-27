@@ -14,6 +14,7 @@ from flask import Blueprint, jsonify, request, session
 from database.auth_db import get_api_key_for_tradingview
 from limiter import limiter
 from utils.session import check_session_validity
+from utils.timezones import LEGACY_SCHEDULE_TIMEZONE
 
 logger = logging.getLogger(__name__)
 
@@ -429,6 +430,7 @@ def _register_trigger(workflow_id, trigger_type, trigger_data, api_key):
                 # Offered by the editor and defaulted on, but never read
                 # before, so schedules kept firing overnight and at weekends.
                 market_hours_only=bool(trigger_data.get("marketHoursOnly", False)),
+                schedule_timezone=trigger_data.get("timezone") or LEGACY_SCHEDULE_TIMEZONE,
             )
             if not set_schedule_job_id(workflow_id, job_id):
                 # Without the stored id, deactivation cannot find the job.

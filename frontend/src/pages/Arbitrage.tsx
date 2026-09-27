@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/table'
 import { useMarketDataContextOptional } from '@/contexts/MarketDataContext'
 import { MarketDataManager, type SymbolData } from '@/lib/MarketDataManager'
+import { formatAppTime } from '@/lib/dateTime'
 import { useAuthStore } from '@/stores/authStore'
 import { showToast } from '@/utils/toast'
 
@@ -510,7 +511,7 @@ export default function Arbitrage() {
             Opportunities
             <span className="text-sm font-normal text-muted-foreground">
               {visibleRows.length} of {pairs.length} pairs
-              {generatedAt ? ` · universe ${new Date(generatedAt).toLocaleTimeString()}` : ''}
+              {generatedAt ? ` · universe ${formatAppTime(generatedAt)}` : ''}
             </span>
           </CardTitle>
         </CardHeader>

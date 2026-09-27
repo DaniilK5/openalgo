@@ -7,8 +7,8 @@ import { useBrokerStore } from '@/stores/brokerStore'
  *
  * Single source of truth for menu gating, used by the shared Navbar AND the
  * standalone full-screen layouts (Playground, Historify, Historify Charts,
- * Flow Editor) so crypto-only items (Leverage) and equity-only items
- * (Holdings) never leak into the wrong broker's menus (GitHub issue #1480).
+ * Flow Editor). Holdings are available to stock brokers and Bybit's unified
+ * account coin-balance view; leverage remains capability-gated.
  */
 export function useProfileMenuItems() {
   const { capabilities, isLoaded, fetchCapabilities } = useBrokerStore()
@@ -23,7 +23,9 @@ export function useProfileMenuItems() {
 
   return profileMenuItems.filter((item) => {
     if (item.href === '/leverage') return capabilities?.leverage_config === true
-    if (item.href === '/holdings') return capabilities?.broker_type !== 'crypto'
+    if (item.href === '/holdings') {
+      return capabilities?.broker_type !== 'crypto' || capabilities?.broker_name === 'bybit'
+    }
     return true
   })
 }

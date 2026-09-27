@@ -31,9 +31,19 @@ import { usePageVisibility } from '@/hooks/usePageVisibility'
 import { cn, makeFormatCurrency, sanitizeCSV } from '@/lib/utils'
 import { useAuthStore } from '@/stores/authStore'
 import { onModeChange } from '@/stores/themeStore'
-import type { Holding, HoldingsStats } from '@/types/trading'
+import type { Holding, HoldingsStats, StandardHolding } from '@/types/trading'
 import { showToast } from '@/utils/toast'
 import { EmptyState } from '@/components/ui/empty-state'
+
+function isAccountCoinBalance(
+  holding: Holding
+): holding is Extract<Holding, { asset_type: 'account_coin_balance' }> {
+  return 'asset_type' in holding && holding.asset_type === 'account_coin_balance'
+}
+
+function isStandardHolding(holding: Holding): holding is StandardHolding {
+  return !isAccountCoinBalance(holding)
+}
 
 function formatPercent(value: number): string {
   return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`
@@ -58,6 +68,7 @@ export default function Holdings() {
   const [error, setError] = useState<string | null>(null)
   const [showStaleWarning, setShowStaleWarning] = useState(false)
   const [orderIntent, setOrderIntent] = useState<HoldingOrderIntent | null>(null)
+  const hasAccountCoinBalances = holdings.some(isAccountCoinBalance)
 
   // Page visibility tracking for resource optimization
   const { isVisible, wasHidden, timeSinceHidden } = usePageVisibility()
@@ -70,7 +81,7 @@ export default function Holdings() {
     isLive,
     isPaused,
   } = useLivePrice(holdings, {
-    enabled: holdings.length > 0,
+    enabled: holdings.length > 0 && !hasAccountCoinBalances,
     useMultiQuotesFallback: true,
     staleThreshold: 5000,
     multiQuotesRefreshInterval: 30000,
@@ -79,7 +90,7 @@ export default function Holdings() {
 
   // Calculate enhanced stats based on real-time data
   const enhancedStats = useMemo(() => {
-    if (!stats) return stats
+    if (!stats || hasAccountCoinBalances) return stats
 
     // Check if any holding has live data
     const hasAnyLiveData = enhancedHoldings.some(
@@ -91,7 +102,7 @@ export default function Holdings() {
 
     // Recalculate stats with real-time data
     return calculateLiveStats(enhancedHoldings, stats)
-  }, [stats, enhancedHoldings])
+  }, [stats, enhancedHoldings, hasAccountCoinBalances])
 
   const fetchHoldings = useCallback(
     async (showRefresh = false) => {
@@ -172,26 +183,31 @@ export default function Holdings() {
     }
 
     try {
-      const headers = [
-        'Symbol',
-        'Exchange',
-        'Quantity',
-        'Avg Price',
-        'LTP',
-        'Product',
-        'P&L',
-        'P&L %',
-      ]
-      const rows = enhancedHoldings.map((h) => [
-        sanitizeCSV(h.symbol),
-        sanitizeCSV(h.exchange),
-        sanitizeCSV(h.quantity),
-        sanitizeCSV(h.average_price),
-        sanitizeCSV(h.ltp),
-        sanitizeCSV(h.product),
-        sanitizeCSV(h.pnl),
-        sanitizeCSV(h.pnlpercent),
-      ])
+      const headers = hasAccountCoinBalances
+        ? ['Coin', 'Exchange', 'Quantity', 'USD Value', 'Currency']
+        : ['Symbol', 'Exchange', 'Quantity', 'Avg Price', 'LTP', 'Product', 'P&L', 'P&L %']
+      const rows = hasAccountCoinBalances
+        ? enhancedHoldings
+            .filter(isAccountCoinBalance)
+            .map((h) => [
+              sanitizeCSV(h.symbol),
+              sanitizeCSV(h.exchange),
+              sanitizeCSV(h.quantity),
+              sanitizeCSV(h.usd_value),
+              sanitizeCSV(h.currency),
+            ])
+        : enhancedHoldings
+            .filter(isStandardHolding)
+            .map((h) => [
+              sanitizeCSV(h.symbol),
+              sanitizeCSV(h.exchange),
+              sanitizeCSV(h.quantity),
+              sanitizeCSV(h.average_price),
+              sanitizeCSV(h.ltp),
+              sanitizeCSV(h.product),
+              sanitizeCSV(h.pnl),
+              sanitizeCSV(h.pnlpercent),
+            ])
 
       const csv = [headers, ...rows].map((row) => row.join(',')).join('\n')
       const blob = new Blob([csv], { type: 'text/csv' })
@@ -227,8 +243,10 @@ export default function Holdings() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold tracking-tight">Investor Summary</h1>
-            {isPaused ? (
+            <h1 className="text-3xl font-bold tracking-tight">
+              {hasAccountCoinBalances ? 'Account Coin Balances' : 'Investor Summary'}
+            </h1>
+            {!hasAccountCoinBalances && isPaused ? (
               <Badge
                 variant="outline"
                 className="bg-amber-500/10 text-amber-600 border-amber-500/30 gap-1"
@@ -236,7 +254,7 @@ export default function Holdings() {
                 <Pause className="h-3 w-3" />
                 Paused
               </Badge>
-            ) : isLive ? (
+            ) : !hasAccountCoinBalances && isLive ? (
               <Badge
                 variant="outline"
                 className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30 gap-1"
@@ -246,7 +264,11 @@ export default function Holdings() {
               </Badge>
             ) : null}
           </div>
-          <p className="text-muted-foreground">View your holdings portfolio</p>
+          <p className="text-muted-foreground">
+            {hasAccountCoinBalances
+              ? 'Unified Account coin quantities and USD values. Derivative positions are shown separately.'
+              : 'View your holdings portfolio'}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -266,65 +288,86 @@ export default function Holdings() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total Holding Value</CardDescription>
-            <CardTitle className="text-2xl text-primary">
-              {enhancedStats ? formatCurrency(enhancedStats.totalholdingvalue) : '---'}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total Investment Value</CardDescription>
-            <CardTitle className="text-2xl">
-              {enhancedStats ? formatCurrency(enhancedStats.totalinvvalue) : '---'}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total Profit and Loss</CardDescription>
-            <CardTitle
-              className={cn(
-                'text-2xl',
-                enhancedStats && isProfit(enhancedStats.totalprofitandloss)
-                  ? 'text-green-600'
-                  : 'text-red-600'
-              )}
-            >
-              {enhancedStats ? (
-                <div className="flex items-center gap-1">
-                  {isProfit(enhancedStats.totalprofitandloss) ? (
-                    <TrendingUp className="h-5 w-5" />
-                  ) : (
-                    <TrendingDown className="h-5 w-5" />
-                  )}
-                  {formatCurrency(enhancedStats.totalprofitandloss)}
-                </div>
-              ) : (
-                '---'
-              )}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total PnL Percentage</CardDescription>
-            <CardTitle
-              className={cn(
-                'text-2xl',
-                enhancedStats && isProfit(enhancedStats.totalpnlpercentage)
-                  ? 'text-green-600'
-                  : 'text-red-600'
-              )}
-            >
-              {enhancedStats ? formatPercent(enhancedStats.totalpnlpercentage) : '---'}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
+      {hasAccountCoinBalances ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Total Coin Balance Value</CardDescription>
+              <CardTitle className="text-2xl text-primary">
+                {stats?.total_value !== undefined ? formatCurrency(stats.total_value) : '---'}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Assets</CardDescription>
+              <CardTitle className="text-2xl">
+                {stats?.total_positions ?? holdings.length}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Total Holding Value</CardDescription>
+              <CardTitle className="text-2xl text-primary">
+                {enhancedStats ? formatCurrency(enhancedStats.totalholdingvalue ?? 0) : '---'}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Total Investment Value</CardDescription>
+              <CardTitle className="text-2xl">
+                {enhancedStats ? formatCurrency(enhancedStats.totalinvvalue ?? 0) : '---'}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Total Profit and Loss</CardDescription>
+              <CardTitle
+                className={cn(
+                  'text-2xl',
+                  enhancedStats && isProfit(enhancedStats.totalprofitandloss ?? 0)
+                    ? 'text-green-600'
+                    : 'text-red-600'
+                )}
+              >
+                {enhancedStats ? (
+                  <div className="flex items-center gap-1">
+                    {isProfit(enhancedStats.totalprofitandloss ?? 0) ? (
+                      <TrendingUp className="h-5 w-5" />
+                    ) : (
+                      <TrendingDown className="h-5 w-5" />
+                    )}
+                    {formatCurrency(enhancedStats.totalprofitandloss ?? 0)}
+                  </div>
+                ) : (
+                  '---'
+                )}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Total PnL Percentage</CardDescription>
+              <CardTitle
+                className={cn(
+                  'text-2xl',
+                  enhancedStats && isProfit(enhancedStats.totalpnlpercentage ?? 0)
+                    ? 'text-green-600'
+                    : 'text-red-600'
+                )}
+              >
+                {enhancedStats ? formatPercent(enhancedStats.totalpnlpercentage ?? 0) : '---'}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+        </div>
+      )}
 
       {/* Holdings Table */}
       <Card>
@@ -346,137 +389,179 @@ export default function Holdings() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Trading Symbol</TableHead>
-                    <TableHead>Exchange</TableHead>
-                    <TableHead className="text-right">Quantity</TableHead>
-                    <TableHead className="text-right">Avg Price</TableHead>
-                    <TableHead className="text-right">LTP</TableHead>
-                    <TableHead>Product</TableHead>
-                    <TableHead className="text-right">Profit and Loss</TableHead>
-                    <TableHead className="text-right">PnL %</TableHead>
-                    <TableHead className="text-center">Actions</TableHead>
+                    {hasAccountCoinBalances ? (
+                      <>
+                        <TableHead>Coin</TableHead>
+                        <TableHead>Account</TableHead>
+                        <TableHead className="text-right">Quantity</TableHead>
+                        <TableHead className="text-right">USD Value</TableHead>
+                        <TableHead>Balance Type</TableHead>
+                      </>
+                    ) : (
+                      <>
+                        <TableHead>Trading Symbol</TableHead>
+                        <TableHead>Exchange</TableHead>
+                        <TableHead className="text-right">Quantity</TableHead>
+                        <TableHead className="text-right">Avg Price</TableHead>
+                        <TableHead className="text-right">LTP</TableHead>
+                        <TableHead>Product</TableHead>
+                        <TableHead className="text-right">Profit and Loss</TableHead>
+                        <TableHead className="text-right">PnL %</TableHead>
+                        <TableHead className="text-center">Actions</TableHead>
+                      </>
+                    )}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {enhancedHoldings.map((holding, index) => (
-                    <TableRow key={`${holding.symbol}-${holding.exchange}-${index}`}>
-                      <TableCell className="font-medium">{holding.symbol}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{holding.exchange}</Badge>
+                  {enhancedHoldings.map((holding, index) =>
+                    isAccountCoinBalance(holding) ? (
+                      <TableRow key={`${holding.symbol}-${holding.exchange}-${index}`}>
+                        <TableCell className="font-medium">{holding.symbol}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">Unified Account</Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-mono">{holding.quantity}</TableCell>
+                        <TableCell className="text-right font-mono">
+                          {formatCurrency(holding.usd_value)}
+                        </TableCell>
+                        <TableCell>Coin balance</TableCell>
+                      </TableRow>
+                    ) : (
+                      <TableRow key={`${holding.symbol}-${holding.exchange}-${index}`}>
+                        <TableCell className="font-medium">{holding.symbol}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{holding.exchange}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-mono">{holding.quantity}</TableCell>
+                        <TableCell className="text-right font-mono">
+                          {holding.average_price !== undefined
+                            ? formatCurrency(holding.average_price)
+                            : '-'}
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          {holding.ltp !== undefined ? formatCurrency(holding.ltp) : '-'}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">{holding.product}</Badge>
+                        </TableCell>
+                        <TableCell
+                          className={cn(
+                            'text-right font-medium',
+                            isProfit(holding.pnl) ? 'text-green-600' : 'text-red-600'
+                          )}
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            {isProfit(holding.pnl) ? (
+                              <TrendingUp className="h-4 w-4" />
+                            ) : (
+                              <TrendingDown className="h-4 w-4" />
+                            )}
+                            {formatCurrency(holding.pnl)}
+                          </div>
+                        </TableCell>
+                        <TableCell
+                          className={cn(
+                            'text-right',
+                            isProfit(holding.pnlpercent) ? 'text-green-600' : 'text-red-600'
+                          )}
+                        >
+                          {formatPercent(holding.pnlpercent)}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-3 border-green-600/40 text-green-600 hover:bg-green-600/10"
+                              onClick={() =>
+                                setOrderIntent({
+                                  symbol: holding.symbol,
+                                  exchange: holding.exchange,
+                                  action: 'BUY',
+                                  quantity: holding.quantity,
+                                })
+                              }
+                            >
+                              Add
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 px-3 border-red-600/40 text-red-600 hover:bg-red-600/10"
+                              onClick={() =>
+                                setOrderIntent({
+                                  symbol: holding.symbol,
+                                  exchange: holding.exchange,
+                                  action: 'SELL',
+                                  quantity: holding.quantity,
+                                })
+                              }
+                            >
+                              Exit
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  )}
+                </TableBody>
+                {hasAccountCoinBalances ? (
+                  <TableFooter>
+                    <TableRow className="bg-muted/50">
+                      <TableCell colSpan={3} className="text-right text-muted-foreground">
+                        Total coin balance value:
                       </TableCell>
-                      <TableCell className="text-right font-mono">{holding.quantity}</TableCell>
-                      <TableCell className="text-right font-mono">
-                        {holding.average_price !== undefined
-                          ? formatCurrency(holding.average_price)
+                      <TableCell className="text-right font-bold">
+                        {formatCurrency(
+                          stats?.total_value ??
+                            enhancedHoldings
+                              .filter(isAccountCoinBalance)
+                              .reduce((total, balance) => total + balance.usd_value, 0)
+                        )}
+                      </TableCell>
+                      <TableCell />
+                    </TableRow>
+                  </TableFooter>
+                ) : (
+                  <TableFooter>
+                    <TableRow className="bg-muted/50">
+                      <TableCell colSpan={6} className="text-right text-muted-foreground">
+                        Total P&L:
+                      </TableCell>
+                      <TableCell
+                        className={cn(
+                          'text-right font-bold',
+                          enhancedStats && isProfit(enhancedStats.totalprofitandloss ?? 0)
+                            ? 'text-green-600'
+                            : 'text-red-600'
+                        )}
+                      >
+                        {enhancedStats
+                          ? `${(enhancedStats.totalprofitandloss ?? 0) >= 0 ? '+' : ''}${formatCurrency(enhancedStats.totalprofitandloss ?? 0)}`
                           : '-'}
                       </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {holding.ltp !== undefined ? formatCurrency(holding.ltp) : '-'}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{holding.product}</Badge>
-                      </TableCell>
                       <TableCell
                         className={cn(
-                          'text-right font-medium',
-                          isProfit(holding.pnl) ? 'text-green-600' : 'text-red-600'
+                          'text-right font-bold',
+                          enhancedStats && isProfit(enhancedStats.totalpnlpercentage ?? 0)
+                            ? 'text-green-600'
+                            : 'text-red-600'
                         )}
                       >
-                        <div className="flex items-center justify-end gap-1">
-                          {isProfit(holding.pnl) ? (
-                            <TrendingUp className="h-4 w-4" />
-                          ) : (
-                            <TrendingDown className="h-4 w-4" />
-                          )}
-                          {formatCurrency(holding.pnl)}
-                        </div>
+                        {enhancedStats ? formatPercent(enhancedStats.totalpnlpercentage ?? 0) : '-'}
                       </TableCell>
-                      <TableCell
-                        className={cn(
-                          'text-right',
-                          isProfit(holding.pnlpercent) ? 'text-green-600' : 'text-red-600'
-                        )}
-                      >
-                        {formatPercent(holding.pnlpercent)}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-3 border-green-600/40 text-green-600 hover:bg-green-600/10"
-                            onClick={() =>
-                              setOrderIntent({
-                                symbol: holding.symbol,
-                                exchange: holding.exchange,
-                                action: 'BUY',
-                                quantity: holding.quantity,
-                              })
-                            }
-                          >
-                            Add
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-3 border-red-600/40 text-red-600 hover:bg-red-600/10"
-                            onClick={() =>
-                              setOrderIntent({
-                                symbol: holding.symbol,
-                                exchange: holding.exchange,
-                                action: 'SELL',
-                                quantity: holding.quantity,
-                              })
-                            }
-                          >
-                            Exit
-                          </Button>
-                        </div>
-                      </TableCell>
+                      <TableCell />
                     </TableRow>
-                  ))}
-                </TableBody>
-                <TableFooter>
-                  <TableRow className="bg-muted/50">
-                    <TableCell colSpan={6} className="text-right text-muted-foreground">
-                      Total P&L:
-                    </TableCell>
-                    <TableCell
-                      className={cn(
-                        'text-right font-bold',
-                        enhancedStats && isProfit(enhancedStats.totalprofitandloss)
-                          ? 'text-green-600'
-                          : 'text-red-600'
-                      )}
-                    >
-                      {enhancedStats
-                        ? `${enhancedStats.totalprofitandloss >= 0 ? '+' : ''}${formatCurrency(enhancedStats.totalprofitandloss)}`
-                        : '-'}
-                    </TableCell>
-                    <TableCell
-                      className={cn(
-                        'text-right font-bold',
-                        enhancedStats && isProfit(enhancedStats.totalpnlpercentage)
-                          ? 'text-green-600'
-                          : 'text-red-600'
-                      )}
-                    >
-                      {enhancedStats ? formatPercent(enhancedStats.totalpnlpercentage) : '-'}
-                    </TableCell>
-                    {/* Keeps the footer aligned with the Actions column */}
-                    <TableCell />
-                  </TableRow>
-                </TableFooter>
+                  </TableFooter>
+                )}
               </Table>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Same order dialog the Option Chain uses, prefilled from the holding.
-          Exit defaults to the full held quantity; Add starts from the same
-          number so the user only has to change it when topping up. CNC is
-          forced because a holding is by definition a delivery position. */}
+      {/* The order dialog is only opened for stock holdings; account coin balances
+          are display-only until category-aware spot order placement is enabled. */}
       <PlaceOrderDialog
         open={orderIntent !== null}
         onOpenChange={(open) => {

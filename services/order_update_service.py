@@ -75,6 +75,7 @@ _BROKER_FACTORIES: dict[str, tuple[str, str]] = {
         "broker.tradesmart.streaming.tradesmart_order_adapter",
         "create_tradesmart_order_adapter",
     ),
+    "bybit": ("broker.bybit.streaming.bybit_order_adapter", "create_bybit_order_adapter"),
 }
 
 # Brokers with no *usable* push mechanism fall back to REST-orderbook polling.
@@ -144,7 +145,8 @@ def start_order_update_adapter(user_id: str, broker: str) -> bool:
         return False
 
     with _LOCK:
-        _stop_locked(user_id)
+        if not _stop_locked(user_id):
+            return False
         try:
             adapter = _build_adapter(user_id, broker)
         except Exception:
@@ -168,15 +170,20 @@ def stop_order_update_adapter(user_id: str) -> None:
         _stop_locked(user_id)
 
 
-def _stop_locked(user_id: str) -> None:
+def _stop_locked(user_id: str) -> bool:
     adapter = _ADAPTERS.pop(user_id, None)
     if adapter is None:
-        return
+        return True
     try:
-        adapter.disconnect()
+        stopped = adapter.disconnect()
+        if stopped is False:
+            logger.error(f"Order-update adapter did not stop cleanly for user {user_id}")
+            return False
         logger.info(f"Order-update adapter stopped for user {user_id}")
+        return True
     except Exception:
         logger.exception(f"Error stopping order-update adapter for user {user_id}")
+        return False
 
 
 def stop_all_order_update_adapters() -> None:

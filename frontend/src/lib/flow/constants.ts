@@ -1198,7 +1198,8 @@ export const NODE_DEFINITIONS = {
 export const DEFAULT_NODE_DATA = {
   start: {
     scheduleType: 'daily' as const,
-    time: '09:15',
+    time: '08:45',
+    timezone: 'Asia/Almaty',
     // The scheduler has always read these; only the switch had a default, so a
     // workflow inherited the exchange's full session unless someone edited the
     // JSON by hand. 15:15 leaves room to square off before the 15:30 close.

@@ -1237,6 +1237,8 @@ def get_dashboard_data():
         from services.funds_service import get_funds
 
         AUTH_TOKEN = get_auth_token(login_username)
+        analyze_mode = get_analyze_mode()
+        dashboard_broker = None if analyze_mode else broker
 
         if AUTH_TOKEN is None:
             # The APP session is still valid -- it is the BROKER token that is
@@ -1253,7 +1255,7 @@ def get_dashboard_data():
             ), 401
 
         # Check if in analyze mode
-        if get_analyze_mode():
+        if analyze_mode:
             api_key = get_api_key_for_tradingview(login_username)
             if api_key:
                 success, response, status_code = get_funds(api_key=api_key)
@@ -1267,16 +1269,28 @@ def get_dashboard_data():
         if not success:
             logger.error(f"Failed to get funds data: {response.get('message', 'Unknown error')}")
             return jsonify(
-                {"status": "error", "message": response.get("message", "Failed to get funds")}
+                {
+                    "status": "error",
+                    "message": response.get("message", "Failed to get funds"),
+                    "broker": dashboard_broker,
+                }
             ), status_code
 
         margin_data = response.get("data", {})
 
         if not margin_data:
             logger.error(f"Failed to get margin data for user {login_username}")
-            return jsonify({"status": "error", "message": "Failed to get margin data"}), 500
+            return jsonify(
+                {
+                    "status": "error",
+                    "message": "Failed to get margin data",
+                    "broker": dashboard_broker,
+                }
+            ), 500
 
-        return jsonify({"status": "success", "data": margin_data})
+        return jsonify(
+            {"status": "success", "data": margin_data, "broker": dashboard_broker}
+        )
 
     except Exception as e:
         logger.exception(f"Error fetching dashboard data: {e}")

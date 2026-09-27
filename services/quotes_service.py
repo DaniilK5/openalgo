@@ -95,7 +95,12 @@ def import_broker_module(broker_name: str) -> Any | None:
 
 
 def get_quotes_with_auth(
-    auth_token: str, feed_token: str | None, broker: str, symbol: str, exchange: str
+    auth_token: str,
+    feed_token: str | None,
+    broker: str,
+    symbol: str,
+    exchange: str,
+    category: str | None = None,
 ) -> tuple[bool, dict[str, Any], int]:
     """
     Get real-time quotes for a symbol using provided auth tokens.
@@ -114,6 +119,9 @@ def get_quotes_with_auth(
         - HTTP status code (int)
     """
     # Validate symbol and exchange before making broker API call
+    if category is not None and broker != "bybit":
+        return False, {"status": "error", "message": "category is only supported for Bybit"}, 400
+
     is_valid, error_msg = validate_symbol_exchange(symbol, exchange)
     if not is_valid:
         return False, {"status": "error", "message": error_msg}, 400
@@ -135,7 +143,10 @@ def get_quotes_with_auth(
             # Fallback to just auth token if we can't inspect
             data_handler = broker_module.BrokerData(auth_token)
 
-        quotes = data_handler.get_quotes(symbol, exchange)
+        if broker == "bybit":
+            quotes = data_handler.get_quotes(symbol, exchange, category=category)
+        else:
+            quotes = data_handler.get_quotes(symbol, exchange)
 
         if quotes is None:
             return False, {"status": "error", "message": "Failed to fetch quotes"}, 500
@@ -161,6 +172,7 @@ def get_quotes(
     auth_token: str | None = None,
     feed_token: str | None = None,
     broker: str | None = None,
+    category: str | None = None,
 ) -> tuple[bool, dict[str, Any], int]:
     """
     Get real-time quotes for a symbol.
@@ -187,11 +199,15 @@ def get_quotes(
         )
         if AUTH_TOKEN is None:
             return False, {"status": "error", "message": "Invalid openalgo apikey"}, 403
-        return get_quotes_with_auth(AUTH_TOKEN, FEED_TOKEN, broker_name, symbol, exchange)
+        if category is None:
+            return get_quotes_with_auth(AUTH_TOKEN, FEED_TOKEN, broker_name, symbol, exchange)
+        return get_quotes_with_auth(AUTH_TOKEN, FEED_TOKEN, broker_name, symbol, exchange, category)
 
     # Case 2: Direct internal call with auth_token and broker
     elif auth_token and broker:
-        return get_quotes_with_auth(auth_token, feed_token, broker, symbol, exchange)
+        if category is None:
+            return get_quotes_with_auth(auth_token, feed_token, broker, symbol, exchange)
+        return get_quotes_with_auth(auth_token, feed_token, broker, symbol, exchange, category)
 
     # Case 3: Invalid parameters
     else:
@@ -224,6 +240,9 @@ def get_multiquotes_with_auth(
         - HTTP status code (int)
     """
     # Validate all symbols before making broker API calls
+    if broker != "bybit" and any(item.get("category") is not None for item in symbols):
+        return False, {"status": "error", "message": "category is only supported for Bybit"}, 400
+
     all_valid, validated_symbols, first_error = validate_symbols_bulk(symbols)
 
     # Separate valid and invalid symbols
@@ -301,7 +320,14 @@ def get_multiquotes_with_auth(
 
         # Use broker's native multiquotes method with only valid symbols
         # Strip validation metadata before passing to broker
-        clean_symbols = [{"symbol": s["symbol"], "exchange": s["exchange"]} for s in valid_symbols]
+        clean_symbols = [
+            {
+                "symbol": s["symbol"],
+                "exchange": s["exchange"],
+                **({"category": s["category"]} if s.get("category") is not None else {}),
+            }
+            for s in valid_symbols
+        ]
         multiquotes = data_handler.get_multiquotes(clean_symbols)
 
         if multiquotes is None:

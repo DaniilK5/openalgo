@@ -1,9 +1,11 @@
 import csv
 import io
+import json
 import os
 from importlib import import_module
 
 from flask import Blueprint, Response, jsonify, redirect, render_template, request, session, url_for
+from sqlalchemy.exc import SQLAlchemyError
 
 from database.auth_db import get_api_key_for_tradingview, get_auth_token
 from database.settings_db import get_analyze_mode
@@ -1046,19 +1048,49 @@ def reject_pending_order_route(order_id):
     data = request.json
     reason = data.get("reason", "No reason provided")
 
-    from database.action_center_db import reject_pending_order
+    from database.action_center_db import get_pending_order_by_id, reject_pending_order
     from extensions import socketio
+
+    pending = get_pending_order_by_id(order_id)
+    pending_order_data = None
+    if pending and pending.user_id == login_username:
+        try:
+            pending_order_data = json.loads(pending.order_data)
+        except (json.JSONDecodeError, TypeError):
+            logger.exception("Could not read queued order data before rejection")
 
     success = reject_pending_order(order_id, reason, login_username, login_username)
 
     if success:
+        inventory_warning = None
+        if pending_order_data:
+            try:
+                from services.bybit_scalping_inventory_service import (
+                    reconcile_bybit_scalping_spot_order_data,
+                )
+
+                reconcile_bybit_scalping_spot_order_data(
+                    user_id=login_username,
+                    order_data=pending_order_data,
+                    broker=session.get("broker", ""),
+                    accepted=False,
+                )
+            except (SQLAlchemyError, LookupError, ValueError):
+                logger.exception("Could not release rejected Bybit Scalping Spot reservation")
+                inventory_warning = (
+                    "The order was rejected, but its Scalping Spot quantity remains reserved. "
+                    "Check the Scalping inventory before placing another sell."
+                )
         # Emit socket event to notify about order rejection
         socketio.emit(
             "pending_order_updated",
             {"action": "rejected", "order_id": order_id, "user_id": login_username},
         )
 
-        return jsonify({"status": "success", "message": "Order rejected successfully"})
+        response = {"status": "success", "message": "Order rejected successfully"}
+        if inventory_warning:
+            response["inventory_warning"] = inventory_warning
+        return jsonify(response)
     else:
         return jsonify({"status": "error", "message": "Failed to reject order"}), 400
 

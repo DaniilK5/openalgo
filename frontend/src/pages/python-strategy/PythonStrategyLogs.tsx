@@ -28,6 +28,7 @@ import { Label } from '@/components/ui/label'
 import { LogViewer } from '@/components/ui/log-viewer'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
+import { formatAppDateTime } from '@/lib/dateTime'
 import type { LogContent, LogFile, PythonStrategy } from '@/types/python-strategy'
 import { showToast } from '@/utils/toast'
 
@@ -262,12 +263,7 @@ export default function PythonStrategyLogs() {
                       <div className="font-medium text-sm truncate">{formatLogName(log.name)}</div>
                       <div className="flex items-center gap-2 mt-1 text-xs opacity-80">
                         <Clock className="h-3 w-3" />
-                        {new Date(log.last_modified).toLocaleString('en-IN', {
-                          day: '2-digit',
-                          month: 'short',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
+                        {formatAppDateTime(log.last_modified)}
                       </div>
                       <div className="flex items-center gap-2 mt-1 text-xs opacity-80">
                         <HardDrive className="h-3 w-3" />
@@ -320,7 +316,7 @@ export default function PythonStrategyLogs() {
             {logContent && (
               <CardDescription>
                 {logContent.lines} lines • {logContent.size_kb.toFixed(2)} KB • Last updated:{' '}
-                {new Date(logContent.last_updated).toLocaleString()}
+                {formatAppDateTime(logContent.last_updated)}
               </CardDescription>
             )}
           </CardHeader>

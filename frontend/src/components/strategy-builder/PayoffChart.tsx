@@ -261,7 +261,7 @@ export function PayoffChart({
       line: { color: colors.spotLine, width: 1.5, dash: 'dot' },
     })
 
-    const annotations: Partial<PlotlyTypes.Annotations>[] = []
+    const annotations: Partial<PlotlyTypes.Annotation>[] = []
 
     // Spot label sits prominently above the chart at y=1.04 (above plot area)
     annotations.push({

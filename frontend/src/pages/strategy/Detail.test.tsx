@@ -603,7 +603,7 @@ describe('strategy Positions broker truth', () => {
     )
     expect(liveCard).toHaveTextContent('Peak: +513.00')
     expect(liveCard).toHaveTextContent('Trough: -355.50')
-    expect(liveCard).toHaveTextContent('Stopped: 31 Aug 2026, 09:45:29 IST')
+    expect(liveCard).toHaveTextContent('Stopped: Aug 31, 2026, 09:15:29')
     expect(liveCard).not.toHaveTextContent('Updated:')
     expect(liveCard).not.toHaveTextContent('+81.00')
 

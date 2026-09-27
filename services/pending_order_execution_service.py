@@ -3,6 +3,8 @@
 import json
 from typing import Any
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from database.action_center_db import get_pending_order_by_id, update_broker_status
 from database.auth_db import get_api_key_for_tradingview, get_auth_token
 from utils.logging import get_logger
@@ -93,7 +95,28 @@ def execute_approved_order(pending_order_id: int) -> tuple[bool, dict[str, Any],
                 f"Cannot execute pending order {pending_order_id}: missing api_key, auth_token, or broker"
             )
             update_broker_status(pending_order_id, None, "rejected")
-            return False, {"status": "error", "message": "Authentication failed"}, 403
+            inventory_warning = None
+            try:
+                from services.bybit_scalping_inventory_service import (
+                    reconcile_bybit_scalping_spot_order_data,
+                )
+
+                reconcile_bybit_scalping_spot_order_data(
+                    user_id=user_id,
+                    order_data=order_data,
+                    broker=broker,
+                    accepted=False,
+                )
+            except (SQLAlchemyError, LookupError, ValueError):
+                logger.exception("Failed to release rejected queued Bybit Scalping Spot order")
+                inventory_warning = (
+                    "Its Scalping Spot quantity remains reserved. Check the inventory "
+                    "before placing another sell."
+                )
+            error_response = {"status": "error", "message": "Authentication failed"}
+            if inventory_warning:
+                error_response["inventory_warning"] = inventory_warning
+            return False, error_response, 403
 
         # Route to appropriate service based on api_type
         success = False

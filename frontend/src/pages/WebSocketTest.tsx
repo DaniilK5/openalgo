@@ -38,6 +38,7 @@ import { useSupportedExchanges } from '@/hooks/useSupportedExchanges'
 import { cn, makeFormatCurrency } from '@/lib/utils'
 import { useAuthStore } from '@/stores/authStore'
 import { showToast } from '@/utils/toast'
+import { formatAppTime } from '@/lib/dateTime'
 
 async function fetchCSRFToken(): Promise<string> {
   const response = await fetch('/auth/csrf-token', { credentials: 'include' })
@@ -118,12 +119,7 @@ function formatVolume(volume: number): string {
 
 function formatTime(timestamp?: string): string {
   if (!timestamp) return '--:--:--'
-  return new Date(timestamp).toLocaleTimeString('en-IN', {
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
+  return formatAppTime(timestamp, { second: '2-digit' })
 }
 
 // Glowing status indicator
@@ -278,12 +274,12 @@ export default function WebSocketTest({ depthLevel = 5 }: WebSocketTestProps) {
 
   // Logging
   const logEvent = useCallback((message: string, type: LogEntry['type'] = 'info') => {
-    const timestamp = new Date().toLocaleTimeString('en-IN', { hour12: false })
+    const timestamp = formatAppTime(new Date(), { second: '2-digit' })
     setLogs((prev) => [...prev.slice(-199), { timestamp, message, type }])
   }, [])
 
   const logRaw = useCallback((data: string) => {
-    const timestamp = new Date().toLocaleTimeString('en-IN', { hour12: false })
+    const timestamp = formatAppTime(new Date(), { second: '2-digit' })
     setRawMessages((prev) => [...prev.slice(-99), `[${timestamp}] ${data}`])
   }, [])
 
@@ -1095,7 +1091,7 @@ export default function WebSocketTest({ depthLevel = 5 }: WebSocketTestProps) {
                         className="border-b border-border/30 last:border-0"
                       >
                         <td className="py-2 pr-3 text-muted-foreground font-mono">
-                          {new Date(u.receivedAt).toLocaleTimeString('en-IN', { hour12: false })}
+                          {formatAppTime(u.receivedAt, { second: '2-digit' })}
                         </td>
                         <td className="py-2 pr-3 font-mono text-foreground/80">{u.orderid}</td>
                         <td className="py-2 pr-3 font-semibold text-foreground">

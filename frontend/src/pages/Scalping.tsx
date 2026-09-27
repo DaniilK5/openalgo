@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { scalpingApi } from '@/api/scalping'
 import { type QuotesData, tradingApi } from '@/api/trading'
 import { ScalpChart } from '@/components/scalping/ScalpChart'
+import { BybitScalping } from '@/components/scalping/BybitScalping'
 import { SetSLDialog } from '@/components/scalping/SetSLDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -266,7 +267,7 @@ function Ticker({
   )
 }
 
-export default function Scalping() {
+function IndianScalping() {
   const apiKey = useAuthStore((s) => s.apiKey)
   const appMode = useThemeStore((s) => s.appMode) // 'live' | 'analyzer'
   const queryClient = useQueryClient()
@@ -1870,4 +1871,9 @@ export default function Scalping() {
       />
     </div>
   )
+}
+
+export default function Scalping() {
+  const broker = useAuthStore((state) => state.user?.broker?.toLowerCase())
+  return broker === 'bybit' ? <BybitScalping /> : <IndianScalping />
 }

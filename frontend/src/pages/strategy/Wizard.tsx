@@ -31,6 +31,11 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import {
+  APP_TIME_ZONE,
+  convertScheduleTime,
+  LEGACY_SCHEDULE_TIME_ZONE,
+} from '@/lib/dateTime'
+import {
   ATM_OFFSETS,
   allowedProductsForLegs,
   batchQuantityLabelFor,
@@ -1148,8 +1153,18 @@ export default function StrategyWizard({ editing }: StrategyWizardProps = {}) {
   )
 
   const [schedulerEnabled, setSchedulerEnabled] = useState(editing?.scheduler?.enabled ?? false)
-  const [schedulerStart, setSchedulerStart] = useState(editing?.scheduler?.start_time ?? '09:15')
-  const [schedulerStop, setSchedulerStop] = useState(editing?.scheduler?.auto_stop_time ?? '15:20')
+  const [schedulerStart, setSchedulerStart] = useState(() =>
+    convertScheduleTime(
+      editing?.scheduler?.start_time ?? '09:15',
+      editing?.scheduler?.timezone ?? LEGACY_SCHEDULE_TIME_ZONE
+    )
+  )
+  const [schedulerStop, setSchedulerStop] = useState(() =>
+    convertScheduleTime(
+      editing?.scheduler?.auto_stop_time ?? '15:20',
+      editing?.scheduler?.timezone ?? LEGACY_SCHEDULE_TIME_ZONE
+    )
+  )
 
   const [strikePickerLegIndex, setStrikePickerLegIndex] = useState<number | null>(null)
 
@@ -1435,6 +1450,7 @@ export default function StrategyWizard({ editing }: StrategyWizardProps = {}) {
             start_time: schedulerStart,
             auto_stop_time: schedulerStop,
             default_mode: 'sandbox',
+            timezone: APP_TIME_ZONE,
           }
         : null,
     }
@@ -1910,7 +1926,8 @@ export default function StrategyWizard({ editing }: StrategyWizardProps = {}) {
         <CardHeader>
           <CardTitle>Scheduler</CardTitle>
           <CardDescription>
-            Optional cron-based start. Mon–Fri default. Times are interpreted in IST (Asia/Kolkata).
+            Optional cron-based start. Mon–Fri default. Times use Asia/Almaty; Indian market sessions
+            remain on exchange time.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -1925,7 +1942,7 @@ export default function StrategyWizard({ editing }: StrategyWizardProps = {}) {
           {schedulerEnabled && (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="space-y-1.5">
-                <Label>Start time (IST)</Label>
+                <Label>Start time (Asia/Almaty)</Label>
                 <Input
                   type="time"
                   value={schedulerStart}
@@ -1933,7 +1950,7 @@ export default function StrategyWizard({ editing }: StrategyWizardProps = {}) {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Auto-stop time (IST)</Label>
+                <Label>Auto-stop time (Asia/Almaty)</Label>
                 <Input
                   type="time"
                   value={schedulerStop}

@@ -3,11 +3,12 @@ React Frontend Serving Blueprint
 Serves the pre-built React app for migrated routes.
 """
 
+import json
 import mimetypes
 import os
 from pathlib import Path
 
-from flask import Blueprint, abort, request, send_file, send_from_directory
+from flask import Blueprint, Response, abort, request, send_file, send_from_directory
 
 react_bp = Blueprint("react", __name__)
 
@@ -97,6 +98,19 @@ npm run build</pre>
     # revalidate-before-use (not "don't store"); this is what lets 180k users
     # pick up frontend updates without ever clearing their cache.
     response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
+@react_bp.route("/app-timezone.js")
+def react_app_timezone():
+    """Expose the configured application timezone to the frontend shell."""
+    from utils.timezones import APP_TIMEZONE
+
+    response = Response(
+        f"window.OPENALGO_APP_TIMEZONE = {json.dumps(APP_TIMEZONE)};",
+        mimetype="application/javascript",
+    )
+    response.headers["Cache-Control"] = "no-store"
     return response
 
 

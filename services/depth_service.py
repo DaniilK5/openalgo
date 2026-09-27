@@ -63,6 +63,7 @@ def get_depth_with_auth(
     symbol: str,
     exchange: str,
     user_id: str | None = None,
+    category: str | None = None,
 ) -> tuple[bool, dict[str, Any], int]:
     """
     Get market depth for a symbol using provided auth tokens.
@@ -82,6 +83,9 @@ def get_depth_with_auth(
         - HTTP status code (int)
     """
     # Validate symbol and exchange before making broker API call
+    if category is not None and broker != "bybit":
+        return False, {"status": "error", "message": "category is only supported for Bybit"}, 400
+
     is_valid, error_msg = validate_symbol_exchange(symbol, exchange)
     if not is_valid:
         return False, {"status": "error", "message": error_msg}, 400
@@ -105,7 +109,10 @@ def get_depth_with_auth(
             # Fallback to just auth token if we can't inspect
             data_handler = broker_module.BrokerData(auth_token)
 
-        depth = data_handler.get_depth(symbol, exchange)
+        if broker == "bybit":
+            depth = data_handler.get_depth(symbol, exchange, category=category)
+        else:
+            depth = data_handler.get_depth(symbol, exchange)
 
         if depth is None:
             return False, {"status": "error", "message": "Failed to fetch market depth"}, 500
@@ -124,6 +131,7 @@ def get_depth(
     feed_token: str | None = None,
     broker: str | None = None,
     user_id: str | None = None,
+    category: str | None = None,
 ) -> tuple[bool, dict[str, Any], int]:
     """
     Get market depth for a symbol.
@@ -165,13 +173,21 @@ def get_depth(
         except Exception as e:
             logger.warning(f"Could not fetch user_id: {e}")
 
+        if category is None:
+            return get_depth_with_auth(
+                AUTH_TOKEN, FEED_TOKEN, broker_name, symbol, exchange, extracted_user_id
+            )
         return get_depth_with_auth(
-            AUTH_TOKEN, FEED_TOKEN, broker_name, symbol, exchange, extracted_user_id
+            AUTH_TOKEN, FEED_TOKEN, broker_name, symbol, exchange, extracted_user_id, category
         )
 
     # Case 2: Direct internal call with auth_token and broker
     elif auth_token and broker:
-        return get_depth_with_auth(auth_token, feed_token, broker, symbol, exchange, user_id)
+        if category is None:
+            return get_depth_with_auth(auth_token, feed_token, broker, symbol, exchange, user_id)
+        return get_depth_with_auth(
+            auth_token, feed_token, broker, symbol, exchange, user_id, category
+        )
 
     # Case 3: Invalid parameters
     else:

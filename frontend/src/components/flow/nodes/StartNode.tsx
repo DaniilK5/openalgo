@@ -1,6 +1,11 @@
 import { Handle, Position } from '@xyflow/react'
 import { Calendar, CalendarDays, Clock, Timer } from 'lucide-react'
 import { memo } from 'react'
+import {
+  APP_TIME_ZONE,
+  convertWeeklySchedule,
+  LEGACY_SCHEDULE_TIME_ZONE,
+} from '@/lib/dateTime'
 import { cn } from '@/lib/utils'
 import type { StartNodeData } from '@/types/flow'
 
@@ -25,6 +30,16 @@ const scheduleLabels: Record<string, string> = {
 
 export const StartNode = memo(({ data, selected }: StartNodeProps) => {
   const Icon = scheduleIcons[data.scheduleType] || Clock
+  const weekdayNames = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+  const scheduleDays = (data.days || [0, 1, 2, 3, 4])
+    .map((day) => weekdayNames[day])
+    .filter((day): day is string => Boolean(day))
+  const displayedSchedule = convertWeeklySchedule(
+    data.time || '09:15',
+    scheduleDays,
+    data.timezone || LEGACY_SCHEDULE_TIME_ZONE,
+    APP_TIME_ZONE
+  )
 
   // Format interval display
   const getIntervalDisplay = () => {
@@ -57,8 +72,8 @@ export const StartNode = memo(({ data, selected }: StartNodeProps) => {
             </div>
           ) : (
             <div className="flex items-center justify-between gap-2">
-              <span className="text-muted-foreground">Time:</span>
-              <span className="mono-data font-medium">{data.time || '09:15'}</span>
+              <span className="text-muted-foreground">Almaty:</span>
+              <span className="mono-data font-medium">{displayedSchedule.time}</span>
             </div>
           )}
           {(data.scheduleType === 'daily' || data.scheduleType === 'weekly') &&
@@ -68,7 +83,9 @@ export const StartNode = memo(({ data, selected }: StartNodeProps) => {
               <div className="mt-0.5 flex items-center justify-between">
                 <span className="text-muted-foreground">Days:</span>
                 <span className="mono-data text-[9px]">
-                  {data.days.map((d) => ['M', 'T', 'W', 'T', 'F', 'S', 'S'][d]).join('')}
+                  {displayedSchedule.days
+                    .map((day) => ['M', 'T', 'W', 'T', 'F', 'S', 'S'][weekdayNames.indexOf(day)])
+                    .join('')}
                 </span>
               </div>
             )}

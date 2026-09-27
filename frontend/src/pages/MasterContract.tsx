@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
+import { formatAppDateTime } from '@/lib/dateTime'
 import { showToast } from '@/utils/toast'
 
 async function fetchCSRFToken(): Promise<string> {
@@ -72,12 +73,7 @@ interface CacheHealth {
 
 function formatDateTime(isoString: string | null): string {
   if (!isoString) return 'Never'
-  const date = new Date(isoString)
-  return date.toLocaleString('en-IN', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'Asia/Kolkata',
-  })
+  return formatAppDateTime(isoString)
 }
 
 function formatDuration(seconds: number | null): string {

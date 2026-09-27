@@ -389,8 +389,9 @@ export default function PythonStrategyGuide() {
                 <p className="font-medium">Start or schedule</p>
                 <p className="text-sm text-muted-foreground">
                   Click <strong>Start</strong> to run immediately, or configure a schedule (e.g.
-                  09:15&ndash;15:30 Mon&ndash;Fri for NSE). The host auto-starts and auto-stops your
-                  strategy at the scheduled times, respecting the exchange's holiday calendar.
+                  08:45&ndash;15:00 Mon&ndash;Fri for NSE, in Asia/Almaty time). The host auto-starts
+                  and auto-stops your strategy at the scheduled times, respecting the exchange's
+                  holiday calendar. Exchange session hours continue to use India time.
                 </p>
               </div>
             </div>
@@ -832,11 +833,11 @@ export default function PythonStrategyGuide() {
                       etc.)
                     </li>
                     <li>
-                      <strong>Start Time:</strong> When the strategy auto-starts (IST, 24-hour
-                      format)
+                      <strong>Start Time:</strong> When the strategy auto-starts (Asia/Almaty,
+                      24-hour format)
                     </li>
                     <li>
-                      <strong>Stop Time:</strong> When to auto-stop (IST, 24-hour format)
+                      <strong>Stop Time:</strong> When to auto-stop (Asia/Almaty, 24-hour format)
                     </li>
                     <li>
                       <strong>Days:</strong> Which days to run (can include weekends for special
@@ -883,7 +884,7 @@ export default function PythonStrategyGuide() {
                     <div className="text-sm">
                       <p>Strategy is waiting and will start on its own at the scheduled time</p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Shows context: "Starts today at 9:15 IST" or "Next: Mon, Tue at 9:15 IST"
+                        Shows context in Asia/Almaty time, for example "Starts today at 8:45"
                       </p>
                     </div>
                   </div>

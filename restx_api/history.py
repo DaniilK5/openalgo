@@ -35,6 +35,7 @@ class History(Resource):
             interval = history_data["interval"]
             start_date = history_data["start_date"]
             end_date = history_data["end_date"]
+            category = history_data.get("category")
             source = history_data.get("source", "api")  # Optional, defaults to 'api'
 
             # Call the service function to get historical data with API key
@@ -46,6 +47,7 @@ class History(Resource):
                 end_date=end_date,
                 api_key=api_key,
                 source=source,
+                category=category,
             )
 
             return make_response(jsonify(response_data), status_code)

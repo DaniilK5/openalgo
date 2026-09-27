@@ -73,6 +73,7 @@ curl -X POST http://127.0.0.1:5000/api/v1/depth \
 | apikey | Your OpenAlgo API key | Mandatory | - |
 | symbol | Trading symbol | Mandatory | - |
 | exchange | Exchange code: NSE, BSE, NFO, BFO, CDS, BCD, MCX | Mandatory | - |
+| category | Bybit product category: `spot`, `linear`, `inverse`, or `option` | Optional | `linear` for Bybit |
 
 ## Response Fields
 
@@ -89,6 +90,7 @@ curl -X POST http://127.0.0.1:5000/api/v1/depth \
 | high | number | Day's high price |
 | low | number | Day's low price |
 | ltp | number | Last traded price |
+| category | string | Bybit product category, when using Bybit |
 | ltq | number | Last traded quantity |
 | prev_close | number | Previous day's close |
 | volume | number | Total traded volume |
@@ -121,6 +123,7 @@ Qty     Price                        Price     Qty
 ## Notes
 
 - Depth shows the **order book** structure for a symbol
+- For Bybit, `category` selects the product market; omit it to use `linear`
 - **Bid-Ask spread** indicates liquidity (tighter = more liquid)
 - **totalbuyqty vs totalsellqty** shows demand-supply balance
 - For F&O, **oi** (open interest) is available

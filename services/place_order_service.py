@@ -2,7 +2,9 @@ import copy
 import importlib
 from typing import Any, Dict, Optional, Tuple
 
-from database.auth_db import get_auth_token_broker
+from sqlalchemy.exc import SQLAlchemyError
+
+from database.auth_db import get_auth_token_broker, verify_api_key
 from database.settings_db import get_analyze_mode
 from events import AnalyzerErrorEvent, OrderFailedEvent, OrderPlacedEvent
 from restx_api.schemas import OrderSchema
@@ -21,6 +23,48 @@ logger = get_logger(__name__)
 
 # Initialize schema
 order_schema = OrderSchema()
+
+
+def _reconcile_bybit_scalping_spot_order(
+    order_data: dict[str, Any],
+    user_id: str,
+    broker: str,
+    *,
+    accepted: bool,
+    order_id: str | None,
+) -> str | None:
+    """Bind Bybit Spot Scalping fills to the reservation after broker response."""
+    if str(broker or "").lower() != "bybit" or not (
+        str(order_data.get("strategy") or "").lower() == "scalping"
+        and str(order_data.get("exchange") or "").upper() == "CRYPTO"
+        and str(order_data.get("category") or "").lower() == "spot"
+        and order_data.get("order_link_id")
+    ):
+        return None
+    try:
+        from services.bybit_scalping_inventory_service import (
+            reconcile_bybit_scalping_spot_order_data,
+        )
+
+        reconcile_bybit_scalping_spot_order_data(
+            user_id=user_id,
+            order_data=order_data,
+            broker=broker,
+            order_id=order_id,
+            accepted=accepted,
+        )
+    except (SQLAlchemyError, LookupError, ValueError):
+        logger.exception("Bybit Scalping Spot order inventory reconciliation failed")
+        if accepted:
+            return (
+                "The order was accepted, but its Scalping inventory update is pending. "
+                "Do not place another Spot sell until the inventory is checked."
+            )
+        return (
+            "The order was not accepted, but its Scalping Spot quantity remains reserved. "
+            "Check the inventory before placing another sell."
+        )
+    return None
 
 
 def import_broker_module(broker_name: str) -> Any | None:
@@ -147,6 +191,13 @@ def place_order_with_auth(
         order_request_data.pop("apikey", None)
 
     api_key = original_data.get("apikey", "")
+    is_bybit_scalping_spot = (
+        str(order_data.get("strategy") or "").lower() == "scalping"
+        and str(order_data.get("exchange") or "").upper() == "CRYPTO"
+        and str(order_data.get("category") or "").lower() == "spot"
+        and bool(order_data.get("order_link_id"))
+    )
+    scalping_user_id = verify_api_key(api_key) if api_key and is_bybit_scalping_spot else ""
 
     # If in analyze mode, route to sandbox for sandbox trading.
     #
@@ -240,6 +291,15 @@ def place_order_with_auth(
 
     if res.status == 200:
         order_response_data = {"status": "success", "orderid": order_id}
+        inventory_warning = _reconcile_bybit_scalping_spot_order(
+            order_data,
+            str(scalping_user_id or ""),
+            broker,
+            accepted=True,
+            order_id=str(order_id),
+        )
+        if inventory_warning:
+            order_response_data["inventory_warning"] = inventory_warning
 
         if emit_event:
             bus.publish(
@@ -268,6 +328,16 @@ def place_order_with_auth(
             else "Failed to place order"
         )
         error_response = {"status": "error", "message": message}
+        if res.status < 500:
+            inventory_warning = _reconcile_bybit_scalping_spot_order(
+                order_data,
+                str(scalping_user_id or ""),
+                broker,
+                accepted=False,
+                order_id=None,
+            )
+            if inventory_warning:
+                error_response["inventory_warning"] = inventory_warning
         bus.publish(
             OrderFailedEvent(
                 mode="live",

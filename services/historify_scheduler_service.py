@@ -20,6 +20,7 @@ from database.apscheduler_jobstore_db import (
 )
 from database.engine_factory import create_db_engine
 from utils.logging import get_logger
+from utils.timezones import APP_TIMEZONE, LEGACY_SCHEDULE_TIMEZONE
 
 logger = get_logger(__name__)
 
@@ -159,15 +160,16 @@ class HistorifyScheduler:
 
             trigger = None
             schedule_type = schedule.get("schedule_type")
+            timezone = schedule.get("timezone") or LEGACY_SCHEDULE_TIMEZONE
 
             if schedule_type == "interval":
                 value = schedule.get("interval_value", 1)
                 unit = schedule.get("interval_unit", "minutes")
 
                 if unit == "hours":
-                    trigger = IntervalTrigger(hours=value)
+                    trigger = IntervalTrigger(hours=value, timezone=timezone)
                 else:  # minutes
-                    trigger = IntervalTrigger(minutes=value)
+                    trigger = IntervalTrigger(minutes=value, timezone=timezone)
 
                 logger.debug(f"Creating interval trigger: every {value} {unit}")
 
@@ -175,9 +177,8 @@ class HistorifyScheduler:
                 time_str = schedule.get("time_of_day", "09:15")
                 try:
                     hour, minute = map(int, time_str.split(":"))
-                    # Use IST timezone explicitly for Indian markets
-                    trigger = CronTrigger(hour=hour, minute=minute, timezone="Asia/Kolkata")
-                    logger.debug(f"Creating daily trigger at {time_str} IST")
+                    trigger = CronTrigger(hour=hour, minute=minute, timezone=timezone)
+                    logger.debug("Creating daily trigger at %s %s", time_str, timezone)
                 except ValueError as e:
                     logger.error(f"Invalid time format: {time_str} - {e}")
                     return None
@@ -224,6 +225,7 @@ class HistorifyScheduler:
         time_of_day: str | None = None,
         lookback_days: int = 1,
         description: str | None = None,
+        timezone: str = APP_TIMEZONE,
     ) -> tuple[bool, str]:
         """
         Create a new schedule and add it to APScheduler.
@@ -257,6 +259,7 @@ class HistorifyScheduler:
                 download_source="watchlist",
                 lookback_days=lookback_days,
                 description=description,
+                timezone=timezone,
             )
 
             if not success:
@@ -298,7 +301,13 @@ class HistorifyScheduler:
                 return False, "Schedule not found"
 
             # Re-add to APScheduler if schedule config changed
-            config_fields = {"schedule_type", "interval_value", "interval_unit", "time_of_day"}
+            config_fields = {
+                "schedule_type",
+                "interval_value",
+                "interval_unit",
+                "time_of_day",
+                "timezone",
+            }
             if any(k in kwargs for k in config_fields):
                 job_id = self._add_schedule_job(schedule)
                 if not job_id:

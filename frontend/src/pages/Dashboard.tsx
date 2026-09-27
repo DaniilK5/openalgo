@@ -13,6 +13,13 @@ interface MarginData {
   m2munrealized: string
   m2mrealized: string
   utiliseddebits: string
+  account_equity_usd?: string
+  coin_balances?: Array<{
+    coin: string
+    equity: string
+    usd_value: string
+    currency: string
+  }>
 }
 
 interface MasterContractStatus {
@@ -44,6 +51,23 @@ function formatIndianNumber(value: string | number): string {
   return isNegative ? `-${formatted}` : formatted
 }
 
+function formatUsd(value: string | number): string {
+  const num = typeof value === 'string' ? Number(value) : value
+  if (!Number.isFinite(num)) return '--'
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(num)
+}
+
+function formatCoinQuantity(value: string): string {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return '--'
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 8 }).format(num)
+}
+
 // Get color class based on P&L value
 function getPnLColor(value: string | number): string {
   const num = typeof value === 'string' ? parseFloat(value) : value
@@ -61,6 +85,7 @@ function getPnLBadgeVariant(value: string | number): 'default' | 'destructive' |
 
 export default function Dashboard() {
   const [marginData, setMarginData] = useState<MarginData | null>(null)
+  const [broker, setBroker] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [masterContract, setMasterContract] = useState<MasterContractStatus>({
@@ -91,6 +116,7 @@ export default function Dashboard() {
       }
 
       const data = await response.json()
+      setBroker(data.broker ?? null)
 
       if (data.status === 'success' && data.data) {
         setMarginData(data.data)
@@ -328,28 +354,40 @@ export default function Dashboard() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6">
+      <div
+        className={
+          broker?.toLowerCase() === 'bybit'
+            ? 'grid grid-cols-1 gap-4 md:gap-6'
+            : 'grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6'
+        }
+      >
         {/* Available Balance */}
         <Card>
           <CardContent className="pt-6">
             <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">Available Balance</p>
+              <p className="text-sm text-muted-foreground">
+                {broker?.toLowerCase() === 'bybit' ? 'Account Equity' : 'Available Balance'}
+              </p>
               <p className="text-2xl font-bold text-primary">
                 {isLoading
                   ? '...'
-                  : marginData
-                    ? formatIndianNumber(marginData.availablecash)
-                    : '0.00'}
+                  : broker?.toLowerCase() === 'bybit'
+                    ? marginData?.account_equity_usd !== undefined
+                      ? formatUsd(marginData.account_equity_usd)
+                      : '--'
+                    : marginData
+                      ? formatIndianNumber(marginData.availablecash)
+                      : '0.00'}
               </p>
               <Badge variant="secondary" className="mt-2">
-                Cash Balance
+                {broker?.toLowerCase() === 'bybit' ? 'USD equivalent' : 'Cash Balance'}
               </Badge>
             </div>
           </CardContent>
         </Card>
 
         {/* Collateral */}
-        <Card>
+        <Card hidden={broker?.toLowerCase() === 'bybit'}>
           <CardContent className="pt-6">
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Collateral</p>
@@ -368,7 +406,7 @@ export default function Dashboard() {
         </Card>
 
         {/* Unrealized P&L */}
-        <Card>
+        <Card hidden={broker?.toLowerCase() === 'bybit'}>
           <CardContent className="pt-6">
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Unrealized P&L</p>
@@ -395,7 +433,7 @@ export default function Dashboard() {
         </Card>
 
         {/* Realized P&L */}
-        <Card>
+        <Card hidden={broker?.toLowerCase() === 'bybit'}>
           <CardContent className="pt-6">
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Realized P&L</p>
@@ -422,7 +460,7 @@ export default function Dashboard() {
         </Card>
 
         {/* Utilised Margin */}
-        <Card>
+        <Card hidden={broker?.toLowerCase() === 'bybit'}>
           <CardContent className="pt-6">
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">Utilised Margin</p>
@@ -443,6 +481,45 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {broker?.toLowerCase() === 'bybit' && marginData && (
+        <Card>
+          <CardContent className="pt-6">
+            <h2 className="text-lg font-semibold">Coin Balances</h2>
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-muted-foreground">
+                    <th className="py-2 pr-4 font-medium">Coin</th>
+                    <th className="py-2 pr-4 text-right font-medium">Quantity</th>
+                    <th className="py-2 text-right font-medium">USD value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(marginData.coin_balances ?? []).map((balance) => (
+                    <tr key={balance.coin} className="border-b last:border-0">
+                      <td className="py-2 pr-4 font-medium">{balance.coin}</td>
+                      <td className="py-2 pr-4 text-right tabular-nums">
+                        {formatCoinQuantity(balance.equity)} {balance.coin}
+                      </td>
+                      <td className="py-2 text-right tabular-nums">
+                        {formatUsd(balance.usd_value)}
+                      </td>
+                    </tr>
+                  ))}
+                  {marginData.coin_balances?.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="py-3 text-muted-foreground">
+                        No coin balances to display.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Error Alert */}
       {error && (

@@ -8,6 +8,7 @@ from events.batch_events import (
     OptionsOrderCompletedEvent,
     SplitCompletedEvent,
 )
+from events.execution_events import ExecutionUpdateEvent
 from events.order_events import (
     GTTCancelFailedEvent,
     GTTCancelledEvent,
@@ -43,6 +44,7 @@ __all__ = [
     "OrderCancelledEvent",
     "OrderCancelFailedEvent",
     "OrderUpdateEvent",
+    "ExecutionUpdateEvent",
     "BasketCompletedEvent",
     "SplitCompletedEvent",
     "OptionsOrderCompletedEvent",

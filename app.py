@@ -836,6 +836,15 @@ def setup_environment(app):
                     "rather than a misleading zero."
                 )
 
+            try:
+                from services.bybit_scalping_inventory_service import (
+                    start_bybit_scalping_inventory_listener,
+                )
+
+                start_bybit_scalping_inventory_listener()
+            except Exception:
+                logger.exception("Failed to initialize Bybit Scalping Spot inventory listener")
+
             # Signal that DB tables are ready (unblocks cache restoration)
             app.db_ready.set()
 

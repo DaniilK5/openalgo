@@ -4,6 +4,7 @@
 import { AlertCircle, CheckCircle2, Clock, Terminal, X, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { formatAppTime } from '@/lib/dateTime'
 import { cn } from '@/lib/utils'
 
 export interface LogEntry {
@@ -48,13 +49,7 @@ export function ExecutionLogPanel({ logs, status, onClose }: ExecutionLogPanelPr
 
   const formatTime = (isoString: string) => {
     try {
-      const date = new Date(isoString)
-      return date.toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-      })
+      return formatAppTime(isoString, { second: '2-digit' })
     } catch {
       return isoString
     }

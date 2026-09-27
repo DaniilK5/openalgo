@@ -117,6 +117,11 @@ curl -X POST http://127.0.0.1:5000/api/v1/holdings \
 - **pnl** is calculated as: (Current Price - Average Buy Price) × Quantity
 - **totalholdingvalue** is the current market value of entire portfolio
 - Holdings persist across trading days (unlike MIS positions)
+- Bybit uses this endpoint to show Unified Account coin balances, not derivative
+  positions. These rows contain `asset_type: "account_coin_balance"`, `quantity`,
+  `usd_value`, and `currency: "USD"`; they do not report an entry price or P&L.
+- Bybit coin-balance rows are display-only and do not offer Add/Exit actions.
+  Use PositionBook for Linear, Inverse, and Options positions.
 
 ## Use Cases
 

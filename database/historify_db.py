@@ -16,6 +16,7 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from utils.logging import get_logger
+from utils.timezones import APP_TIMEZONE, LEGACY_SCHEDULE_TIMEZONE
 
 # Initialize logger
 logger = get_logger(__name__)
@@ -206,6 +207,7 @@ def init_database():
                 interval_value INTEGER,
                 interval_unit VARCHAR,
                 time_of_day VARCHAR,
+                timezone VARCHAR DEFAULT 'Asia/Almaty',
                 download_source VARCHAR DEFAULT 'watchlist',
                 data_interval VARCHAR NOT NULL,
                 lookback_days INTEGER DEFAULT 1,
@@ -222,6 +224,20 @@ def init_database():
                 failed_runs INTEGER DEFAULT 0
             )
         """)
+
+        schedule_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info('historify_schedules')").fetchall()
+        }
+        if "timezone" not in schedule_columns:
+            conn.execute(
+                "ALTER TABLE historify_schedules "
+                "ADD COLUMN timezone VARCHAR DEFAULT 'Asia/Kolkata'"
+            )
+        conn.execute(
+            "UPDATE historify_schedules SET timezone = ? "
+            "WHERE timezone IS NULL OR TRIM(timezone) = ''",
+            [LEGACY_SCHEDULE_TIMEZONE],
+        )
 
         # Execution history
         conn.execute("""
@@ -3094,6 +3110,7 @@ def create_schedule(
     download_source: str = "watchlist",
     lookback_days: int = 1,
     description: str | None = None,
+    timezone: str = APP_TIMEZONE,
 ) -> tuple[bool, str]:
     """
     Create a new schedule configuration.
@@ -3127,9 +3144,9 @@ def create_schedule(
                 """
                 INSERT INTO historify_schedules
                 (id, name, description, schedule_type, interval_value, interval_unit,
-                 time_of_day, download_source, data_interval, lookback_days,
+                 time_of_day, timezone, download_source, data_interval, lookback_days,
                  is_enabled, is_paused, status, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, FALSE, 'idle', current_timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE, FALSE, 'idle', current_timestamp)
             """,
                 [
                     schedule_id,
@@ -3139,6 +3156,7 @@ def create_schedule(
                     interval_value,
                     interval_unit,
                     time_of_day,
+                    timezone,
                     download_source,
                     data_interval,
                     lookback_days,
@@ -3180,7 +3198,7 @@ def get_schedule(schedule_id: str) -> dict[str, Any] | None:
             result = conn.execute(
                 """
                 SELECT id, name, description, schedule_type, interval_value,
-                       interval_unit, time_of_day, download_source, data_interval,
+                       interval_unit, time_of_day, timezone, download_source, data_interval,
                        lookback_days, is_enabled, is_paused, status, apscheduler_job_id,
                        created_at, last_run_at, next_run_at, last_run_status,
                        total_runs, successful_runs, failed_runs
@@ -3207,7 +3225,7 @@ def get_all_schedules() -> list[dict[str, Any]]:
         with get_connection() as conn:
             result = conn.execute("""
                 SELECT id, name, description, schedule_type, interval_value,
-                       interval_unit, time_of_day, download_source, data_interval,
+                       interval_unit, time_of_day, timezone, download_source, data_interval,
                        lookback_days, is_enabled, is_paused, status, apscheduler_job_id,
                        created_at, last_run_at, next_run_at, last_run_status,
                        total_runs, successful_runs, failed_runs
@@ -3234,6 +3252,7 @@ def update_schedule(
     interval_value: int | None = None,
     interval_unit: str | None = None,
     time_of_day: str | None = None,
+    timezone: str | None = None,
     download_source: str | None = None,
     data_interval: str | None = None,
     lookback_days: int | None = None,
@@ -3268,6 +3287,9 @@ def update_schedule(
         if time_of_day is not None:
             updates.append("time_of_day = ?")
             params.append(time_of_day)
+        if timezone is not None:
+            updates.append("timezone = ?")
+            params.append(timezone)
         if download_source is not None:
             updates.append("download_source = ?")
             params.append(download_source)
@@ -3502,7 +3524,7 @@ def get_active_schedules() -> list[dict[str, Any]]:
         with get_connection() as conn:
             result = conn.execute("""
                 SELECT id, name, description, schedule_type, interval_value,
-                       interval_unit, time_of_day, download_source, data_interval,
+                       interval_unit, time_of_day, timezone, download_source, data_interval,
                        lookback_days, is_enabled, is_paused, status, apscheduler_job_id,
                        created_at, last_run_at, next_run_at, last_run_status,
                        total_runs, successful_runs, failed_runs

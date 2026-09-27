@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
+import { formatAppDateTime } from '@/lib/dateTime'
 import {
   Table,
   TableBody,
@@ -124,16 +125,10 @@ export default function LatencyDashboard() {
 
   const formatTimestamp = (timestamp: string) => {
     try {
-      const date = new Date(timestamp)
-      return date.toLocaleString('en-IN', {
-        timeZone: 'Asia/Kolkata',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
+      return formatAppDateTime(timestamp, {
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
-        hour12: true,
       })
     } catch {
       return timestamp

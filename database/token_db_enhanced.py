@@ -134,6 +134,18 @@ class SymbolData:
     tick_size: float | None = None
     underlying: str | None = None  # Extracted from OpenAlgo symbol format for F&O
     contract_value: float | None = None  # Contract multiplier (e.g. 0.001 for BTCUSD.P)
+    category: str | None = None
+    qty_step: float | None = None
+    min_qty: float | None = None
+    max_qty: float | None = None
+    base_precision: float | None = None
+    quote_precision: float | None = None
+    min_order_amt: float | None = None
+    max_market_qty: float | None = None
+    max_limit_qty: float | None = None
+    base_coin: str | None = None
+    quote_coin: str | None = None
+    settle_coin: str | None = None
 
 
 class BrokerSymbolCache:
@@ -154,6 +166,7 @@ class BrokerSymbolCache:
         self.by_symbol_exchange: dict[tuple[str, str], SymbolData] = {}
         self.by_token_exchange: dict[tuple[str, str], SymbolData] = {}
         self.by_brsymbol_exchange: dict[tuple[str, str], SymbolData] = {}
+        self.by_brsymbol_category_exchange: dict[tuple[str, str, str], SymbolData] = {}
         self.by_token: dict[str, SymbolData] = {}
 
         # Pre-computed indexes for FNO filter performance (O(1) lookups)
@@ -245,7 +258,19 @@ class BrokerSymbolCache:
                     instrumenttype=sym.instrumenttype,
                     tick_size=sym.tick_size,
                     underlying=underlying,
-                    contract_value=getattr(sym, 'contract_value', None),
+                    contract_value=getattr(sym, "contract_value", None),
+                    category=getattr(sym, "category", None),
+                    qty_step=getattr(sym, "qty_step", None),
+                    min_qty=getattr(sym, "min_qty", None),
+                    max_qty=getattr(sym, "max_qty", None),
+                    base_precision=getattr(sym, "base_precision", None),
+                    quote_precision=getattr(sym, "quote_precision", None),
+                    min_order_amt=getattr(sym, "min_order_amt", None),
+                    max_market_qty=getattr(sym, "max_market_qty", None),
+                    max_limit_qty=getattr(sym, "max_limit_qty", None),
+                    base_coin=getattr(sym, "base_coin", None),
+                    quote_coin=getattr(sym, "quote_coin", None),
+                    settle_coin=getattr(sym, "settle_coin", None),
                 )
 
                 # Store in primary dict
@@ -255,6 +280,10 @@ class BrokerSymbolCache:
                 self.by_symbol_exchange[(sym.symbol, sym.exchange)] = symbol_data
                 self.by_token_exchange[(sym.token, sym.exchange)] = symbol_data
                 self.by_brsymbol_exchange[(sym.brsymbol, sym.exchange)] = symbol_data
+                if symbol_data.category:
+                    self.by_brsymbol_category_exchange[
+                        (sym.brsymbol, sym.exchange, symbol_data.category)
+                    ] = symbol_data
                 self.by_token[sym.token] = symbol_data
 
                 # Build FNO filter indexes for O(1) lookups
@@ -374,12 +403,19 @@ class BrokerSymbolCache:
         self.stats.misses += 1
         return None
 
-    def get_oa_symbol(self, brsymbol: str, exchange: str) -> str | None:
+    def get_oa_symbol(
+        self, brsymbol: str, exchange: str, category: str | None = None
+    ) -> str | None:
         """Get OpenAlgo symbol for broker symbol and exchange - O(1) lookup"""
         self.stats.hits += 1
-        key = (brsymbol, exchange)
-        if key in self.by_brsymbol_exchange:
-            return self.by_brsymbol_exchange[key].symbol
+        if category:
+            key = (brsymbol, exchange, category)
+            if key in self.by_brsymbol_category_exchange:
+                return self.by_brsymbol_category_exchange[key].symbol
+        else:
+            key = (brsymbol, exchange)
+            if key in self.by_brsymbol_exchange:
+                return self.by_brsymbol_exchange[key].symbol
 
         self.stats.hits -= 1
         self.stats.misses += 1
@@ -698,6 +734,7 @@ class BrokerSymbolCache:
         self.by_symbol_exchange.clear()
         self.by_token_exchange.clear()
         self.by_brsymbol_exchange.clear()
+        self.by_brsymbol_category_exchange.clear()
         self.by_token.clear()
         # Clear FNO filter indexes
         self.by_exchange.clear()
@@ -783,19 +820,21 @@ def get_br_symbol(symbol: str, exchange: str) -> str | None:
     return get_br_symbol_dbquery(symbol, exchange)
 
 
-def get_oa_symbol(brsymbol: str, exchange: str) -> str | None:
+def get_oa_symbol(
+    brsymbol: str, exchange: str, category: str | None = None
+) -> str | None:
     """
     Get OpenAlgo symbol for a given broker symbol and exchange
     """
     cache = get_cache()
 
     if cache.cache_loaded and cache.is_cache_valid():
-        result = cache.get_oa_symbol(brsymbol, exchange)
+        result = cache.get_oa_symbol(brsymbol, exchange, category)
         if result is not None:
             return result
 
     cache.stats.db_queries += 1
-    return get_oa_symbol_dbquery(brsymbol, exchange)
+    return get_oa_symbol_dbquery(brsymbol, exchange, category)
 
 
 def get_brexchange(symbol: str, exchange: str) -> str | None:
@@ -876,12 +915,17 @@ def get_br_symbol_dbquery(symbol: str, exchange: str) -> str | None:
         return None
 
 
-def get_oa_symbol_dbquery(brsymbol: str, exchange: str) -> str | None:
+def get_oa_symbol_dbquery(
+    brsymbol: str, exchange: str, category: str | None = None
+) -> str | None:
     """Query database for OpenAlgo symbol"""
     try:
         from database.symbol import SymToken
 
-        sym_token = SymToken.query.filter_by(brsymbol=brsymbol, exchange=exchange).first()
+        query = SymToken.query.filter_by(brsymbol=brsymbol, exchange=exchange)
+        if category:
+            query = query.filter_by(category=category)
+        sym_token = query.first()
         if sym_token:
             return sym_token.symbol
         else:
@@ -926,6 +970,19 @@ def get_symbol_info_dbquery(symbol: str, exchange: str) -> SymbolData | None:
                 lotsize=sym_token.lotsize,
                 instrumenttype=sym_token.instrumenttype,
                 tick_size=sym_token.tick_size,
+                contract_value=getattr(sym_token, "contract_value", None),
+                category=getattr(sym_token, "category", None),
+                qty_step=getattr(sym_token, "qty_step", None),
+                min_qty=getattr(sym_token, "min_qty", None),
+                max_qty=getattr(sym_token, "max_qty", None),
+                base_precision=getattr(sym_token, "base_precision", None),
+                quote_precision=getattr(sym_token, "quote_precision", None),
+                min_order_amt=getattr(sym_token, "min_order_amt", None),
+                max_market_qty=getattr(sym_token, "max_market_qty", None),
+                max_limit_qty=getattr(sym_token, "max_limit_qty", None),
+                base_coin=getattr(sym_token, "base_coin", None),
+                quote_coin=getattr(sym_token, "quote_coin", None),
+                settle_coin=getattr(sym_token, "settle_coin", None),
             )
         else:
             return None

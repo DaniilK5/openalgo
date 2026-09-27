@@ -10,6 +10,7 @@
  * Both bars are labelled. Labelling only the portfolio made a row read as
  * "-7.5%" when the story was the gap to a benchmark that fell twice as far.
  */
+import { formatAppDate } from '@/lib/dateTime'
 interface CrisisPeriod {
   key: string
   label: string
@@ -30,12 +31,7 @@ interface Props {
 }
 
 const fmtDate = (iso: string) =>
-  new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: '2-digit',
-    timeZone: 'UTC',
-  })
+  formatAppDate(iso, { day: '2-digit', month: 'short', year: '2-digit' })
 
 const humanSpan = (days?: number) => {
   if (!days || days < 1) return '1 day'

@@ -1,7 +1,6 @@
 import csv
 import io
 import json
-
 from datetime import datetime, timedelta
 
 import pytz
@@ -22,13 +21,14 @@ from database.analyzer_db import AnalyzerLog, db_session
 from utils.api_analyzer import get_analyzer_stats
 from utils.logging import get_logger
 from utils.session import check_session_validity
+from utils.timezones import format_app_datetime
 
 logger = get_logger(__name__)
 
 analyzer_bp = Blueprint("analyzer_bp", __name__, url_prefix="/analyzer")
 
 
-def format_request(req, ist):
+def format_request(req):
     """Format a single request entry"""
     try:
         request_data = (
@@ -42,7 +42,9 @@ def format_request(req, ist):
 
         # Base request info
         formatted_request = {
-            "timestamp": req.created_at.astimezone(ist).strftime("%Y-%m-%d %H:%M:%S"),
+            "timestamp": format_app_datetime(
+                req.created_at, format_string="%Y-%m-%d %H:%M:%S"
+            ),
             "api_type": req.api_type,
             "source": request_data.get("strategy", "Unknown"),
             "request_data": request_data,
@@ -86,7 +88,7 @@ def get_recent_requests():
         requests = []
 
         for req in recent:
-            formatted = format_request(req, ist)
+            formatted = format_request(req)
             if formatted:
                 requests.append(formatted)
 
@@ -122,7 +124,7 @@ def get_filtered_requests(start_date=None, end_date=None):
         requests = []
 
         for req in results:
-            formatted = format_request(req, ist)
+            formatted = format_request(req)
             if formatted:
                 requests.append(formatted)
 

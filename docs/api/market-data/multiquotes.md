@@ -106,6 +106,7 @@ curl -X POST http://127.0.0.1:5000/api/v1/multiquotes \
 |-------|-------------|
 | symbol | Trading symbol |
 | exchange | Exchange code: NSE, BSE, NFO, BFO, CDS, BCD, MCX |
+| category | Bybit product category: `spot`, `linear`, `inverse`, or `option`; omitted means `linear` |
 
 ## Response Fields
 
@@ -120,6 +121,7 @@ curl -X POST http://127.0.0.1:5000/api/v1/multiquotes \
 |-------|------|-------------|
 | symbol | string | Trading symbol |
 | exchange | string | Exchange code |
+| category | string | Bybit product category |
 | data | object | Quote data (same as Quotes endpoint) |
 | error | string | Error message if symbol lookup failed |
 
@@ -144,6 +146,7 @@ curl -X POST http://127.0.0.1:5000/api/v1/multiquotes \
 - Maximum symbols per request depends on broker limits
 - If broker doesn't support multiquotes natively, the API fetches quotes individually
 - For F&O symbols, **oi** (open interest) field is populated
+- Bybit accepts `category` per symbol object; other brokers reject it
 
 ## Use Cases
 

@@ -15,7 +15,7 @@ import signal
 import subprocess
 import sys
 import threading
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from time import monotonic, sleep
 
@@ -47,6 +47,7 @@ from database.market_calendar_db import (
 )
 from utils.constants import CRYPTO_EXCHANGES
 from utils.session import check_session_validity
+from utils.timezones import APP_TIMEZONE, LEGACY_SCHEDULE_TIMEZONE
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -55,8 +56,36 @@ logger = logging.getLogger(__name__)
 # Create blueprint with /python route
 python_strategy_bp = Blueprint("python_strategy_bp", __name__, url_prefix="/python")
 
-# Timezone configuration - Indian Standard Time
+# Exchange-calendar timezone and application schedule timezone.
 IST = pytz.timezone("Asia/Kolkata")
+APP_TZ = pytz.timezone(APP_TIMEZONE)
+LEGACY_SCHEDULE_TZ = pytz.timezone(LEGACY_SCHEDULE_TIMEZONE)
+
+
+def _schedule_timezone(config_or_name=None):
+    """Resolve a saved schedule timezone, preserving legacy configs as IST."""
+    if isinstance(config_or_name, dict):
+        name = config_or_name.get("schedule_timezone") or LEGACY_SCHEDULE_TIMEZONE
+    else:
+        name = config_or_name or LEGACY_SCHEDULE_TIMEZONE
+    try:
+        return pytz.timezone(name)
+    except (pytz.UnknownTimeZoneError, TypeError):
+        return LEGACY_SCHEDULE_TZ
+
+
+def _schedule_now(config_or_name=None):
+    """Return the current instant in a strategy's schedule timezone."""
+    return datetime.now(IST).astimezone(_schedule_timezone(config_or_name))
+
+
+def _shift_schedule_days(days, offset=1):
+    """Shift weekday names by a number of days, wrapping across Sunday."""
+    names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+    return sorted(
+        {names[(names.index(day.lower()) + offset) % 7] for day in days if day.lower() in names},
+        key=names.index,
+    )
 
 # Global storage with thread locks for safety
 RUNNING_STRATEGIES = {}  # {strategy_id: {'process': subprocess.Popen, 'started_at': datetime}}
@@ -314,8 +343,8 @@ def get_ist_time():
     return datetime.now(IST)
 
 
-def format_ist_time(dt):
-    """Format datetime to IST string"""
+def format_app_time(dt):
+    """Format legacy strategy timestamps in the application timezone."""
     if dt:
         if isinstance(dt, str):
             try:
@@ -323,10 +352,9 @@ def format_ist_time(dt):
             except Exception:
                 return dt
         if not dt.tzinfo:
-            dt = IST.localize(dt)
-        else:
-            dt = dt.astimezone(IST)
-        return dt.strftime("%Y-%m-%d %H:%M:%S IST")
+            dt = LEGACY_SCHEDULE_TZ.localize(dt)
+        dt = dt.astimezone(APP_TZ)
+        return dt.strftime("%Y-%m-%d %H:%M:%S Asia/Almaty")
     return ""
 
 
@@ -1266,7 +1294,7 @@ def scheduled_start_strategy(strategy_id: str):
     if not config:
         return
 
-    now = datetime.now(IST)
+    now = _schedule_now(config)
     day_names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
     today_day = day_names[now.weekday()]
 
@@ -1397,15 +1425,13 @@ def is_within_schedule_time(strategy_id: str) -> bool:
 
         now = datetime.now(IST)
         now_ms = int(now.timestamp() * 1000)
-
-        # Resolve the user's window for today (epoch-ms)
-        midnight_ist = IST.localize(datetime.combine(now.date(), datetime.min.time()))
-        midnight_ms = int(midnight_ist.timestamp() * 1000)
+        schedule_now = now.astimezone(_schedule_timezone(config))
+        schedule_date = schedule_now.date()
 
         if schedule_start:
             try:
                 sh, sm = map(int, schedule_start.split(":"))
-                user_start_ms = midnight_ms + (sh * 3600 + sm * 60) * 1000
+                start_clock = time(sh, sm)
             except (ValueError, AttributeError):
                 logger.warning(f"Bad schedule_start for {strategy_id}: {schedule_start}")
                 return False
@@ -1413,16 +1439,29 @@ def is_within_schedule_time(strategy_id: str) -> bool:
             # No user start: only valid for CRYPTO (treat as 00:00)
             if exch not in CRYPTO_EXCHANGES:
                 return False
-            user_start_ms = midnight_ms
+            start_clock = time.min
 
         if schedule_stop:
             try:
                 eh, em = map(int, schedule_stop.split(":"))
-                user_end_ms = midnight_ms + (eh * 3600 + em * 60) * 1000
+                stop_clock = time(eh, em)
             except (ValueError, AttributeError):
-                user_end_ms = midnight_ms + 86_399_000
+                stop_clock = time(23, 59, 59)
         else:
-            user_end_ms = midnight_ms + 86_399_000
+            stop_clock = time(23, 59, 59)
+
+        overnight = stop_clock < start_clock
+        if overnight and schedule_now.time() <= stop_clock:
+            schedule_date -= timedelta(days=1)
+
+        schedule_zone = _schedule_timezone(config)
+        start_date = datetime.combine(schedule_date, start_clock)
+        stop_date = datetime.combine(
+            schedule_date + (timedelta(days=1) if overnight else timedelta()),
+            stop_clock,
+        )
+        user_start_ms = int(schedule_zone.localize(start_date).timestamp() * 1000)
+        user_end_ms = int(schedule_zone.localize(stop_date).timestamp() * 1000)
 
         # Exchange-aware: intersect with today's effective session window
         if exch in CRYPTO_EXCHANGES:
@@ -1461,9 +1500,7 @@ def market_hours_enforcer():
         if not is_trading_day_enforcement_enabled():
             return
 
-        now = datetime.now(IST)
         day_names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
-        today_day = day_names[now.weekday()]
 
         stopped_count = 0
         started_count = 0
@@ -1476,6 +1513,18 @@ def market_hours_enforcer():
             exch = normalize_exchange(config.get("exchange"))
             status = get_market_status(exch)
             schedule_days = [d.lower() for d in config.get("schedule_days", [])]
+            schedule_now = _schedule_now(config)
+            schedule_date = schedule_now.date()
+            start_time = config.get("schedule_start")
+            stop_time = config.get("schedule_stop")
+            if start_time and stop_time and stop_time < start_time:
+                try:
+                    stop_hour, stop_minute = map(int, stop_time.split(":"))
+                    if schedule_now.time() <= time(stop_hour, stop_minute):
+                        schedule_date -= timedelta(days=1)
+                except ValueError:
+                    pass
+            today_day = day_names[schedule_date.weekday()]
 
             if status.get("is_trading"):
                 # Exchange tradeable today — clear any stale pause reason
@@ -1605,11 +1654,18 @@ def cleanup_strategy_logs(strategy_id: str):
         logger.exception(f"Error cleaning up logs for strategy {strategy_id}: {e}")
 
 
-def schedule_strategy(strategy_id, start_time, stop_time=None, days=None):
+def schedule_strategy(
+    strategy_id, start_time, stop_time=None, days=None, schedule_timezone=None
+):
     """
-    Schedule a strategy to run at specific times (IST).
+    Schedule a strategy using its saved wall-clock timezone.
     Allows any day of the week to support special exchange sessions (e.g., Muhurat trading).
     """
+    config = STRATEGY_CONFIGS[strategy_id]
+    schedule_zone = _schedule_timezone(
+        schedule_timezone or config.get("schedule_timezone") or LEGACY_SCHEDULE_TIMEZONE
+    )
+    schedule_timezone = schedule_zone.zone
     if not days:
         days = ["mon", "tue", "wed", "thu", "fri"]  # Default to weekdays
 
@@ -1635,11 +1691,13 @@ def schedule_strategy(strategy_id, start_time, stop_time=None, days=None):
     if SCHEDULER.get_job(stop_job_id):
         SCHEDULER.remove_job(stop_job_id)
 
-    # Schedule start with holiday check wrapper (time is already in IST from frontend)
+    # Schedule start in the user's schedule timezone.
     hour, minute = map(int, start_time.split(":"))
     SCHEDULER.add_job(
         func=lambda: scheduled_start_strategy(strategy_id),
-        trigger=CronTrigger(hour=hour, minute=minute, day_of_week=",".join(days), timezone=IST),
+        trigger=CronTrigger(
+            hour=hour, minute=minute, day_of_week=",".join(days), timezone=schedule_zone
+        ),
         id=start_job_id,
         replace_existing=True,
     )
@@ -1647,9 +1705,15 @@ def schedule_strategy(strategy_id, start_time, stop_time=None, days=None):
     # Schedule stop if provided (always runs for safety)
     if stop_time:
         hour, minute = map(int, stop_time.split(":"))
+        stop_days = _shift_schedule_days(days) if stop_time < start_time else days
         SCHEDULER.add_job(
             func=lambda: scheduled_stop_strategy(strategy_id),
-            trigger=CronTrigger(hour=hour, minute=minute, day_of_week=",".join(days), timezone=IST),
+            trigger=CronTrigger(
+                hour=hour,
+                minute=minute,
+                day_of_week=",".join(stop_days),
+                timezone=schedule_zone,
+            ),
             id=stop_job_id,
             replace_existing=True,
         )
@@ -1659,10 +1723,12 @@ def schedule_strategy(strategy_id, start_time, stop_time=None, days=None):
     STRATEGY_CONFIGS[strategy_id]["schedule_start"] = start_time
     STRATEGY_CONFIGS[strategy_id]["schedule_stop"] = stop_time
     STRATEGY_CONFIGS[strategy_id]["schedule_days"] = days
+    STRATEGY_CONFIGS[strategy_id]["schedule_timezone"] = schedule_timezone
     save_configs()
 
     logger.debug(
-        f"Scheduled strategy {strategy_id}: {start_time} - {stop_time} IST on {days} (holiday check enforced)"
+        f"Scheduled strategy {strategy_id}: {start_time} - {stop_time} "
+        f"({schedule_timezone}) on {days} (holiday check enforced)"
     )
 
 
@@ -1708,13 +1774,13 @@ def index():
             "is_scheduled": config.get("is_scheduled", False),
             "is_error": config.get("is_error", False),
             "error_message": config.get("error_message", ""),
-            "error_time": format_ist_time(config.get("error_time", "")),
+            "error_time": format_app_time(config.get("error_time", "")),
             "schedule_start": config.get("schedule_start", ""),
             "schedule_stop": config.get("schedule_stop", ""),
             "schedule_days": config.get("schedule_days", []),
             "created_at": config.get("created_at", ""),
-            "last_started": format_ist_time(config.get("last_started", "")),
-            "last_stopped": format_ist_time(config.get("last_stopped", "")),
+            "last_started": format_app_time(config.get("last_started", "")),
+            "last_stopped": format_app_time(config.get("last_stopped", "")),
             "pid": config.get("pid"),
             "params": {},  # No params needed in simplified version
         }
@@ -1858,6 +1924,7 @@ def new_strategy():
                 "schedule_start": schedule_start,
                 "schedule_stop": schedule_stop,
                 "schedule_days": schedule_days,
+                "schedule_timezone": APP_TIMEZONE,
             }
             save_configs()
 
@@ -1911,6 +1978,7 @@ def start_strategy(strategy_id):
         config["schedule_start"] = config.get("schedule_start", "09:00")
         config["schedule_stop"] = config.get("schedule_stop", "16:00")
         config["schedule_days"] = config.get("schedule_days", ["mon", "tue", "wed", "thu", "fri"])
+        config.setdefault("schedule_timezone", LEGACY_SCHEDULE_TIMEZONE)
         STRATEGY_CONFIGS[strategy_id] = config
         save_configs()
         # Setup scheduler jobs for this strategy
@@ -2061,6 +2129,7 @@ def schedule_strategy_route(strategy_id):
     stop_time = data.get("stop_time")
     days = data.get("days", ["mon", "tue", "wed", "thu", "fri"])
     exchange_in = data.get("exchange")
+    schedule_timezone = data.get("timezone") or APP_TIMEZONE
 
     if not start_time:
         return jsonify({"status": "error", "message": "Start time is required"}), 400
@@ -2069,12 +2138,18 @@ def schedule_strategy_route(strategy_id):
         # Update exchange first if provided so smart-default behavior applies
         if exchange_in is not None:
             STRATEGY_CONFIGS[strategy_id]["exchange"] = normalize_exchange(exchange_in)
-        schedule_strategy(strategy_id, start_time, stop_time, days)
+        schedule_strategy(
+            strategy_id,
+            start_time,
+            stop_time,
+            days,
+            schedule_timezone=schedule_timezone,
+        )
         save_configs()
         exch = STRATEGY_CONFIGS[strategy_id].get("exchange", DEFAULT_STRATEGY_EXCHANGE)
-        schedule_info = f"[{exch}] Scheduled at {start_time} IST"
+        schedule_info = f"[{exch}] Scheduled at {start_time} ({schedule_timezone})"
         if stop_time:
-            schedule_info += f" - {stop_time} IST"
+            schedule_info += f" - {stop_time} ({schedule_timezone})"
         return jsonify({"status": "success", "message": schedule_info})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -2391,10 +2466,12 @@ def get_schedule_status(config):
     - scheduled: Strategy is armed and will auto-start at scheduled time
     - paused: Market holiday, strategy won't run today
     """
-    now = datetime.now(IST)
+    now = _schedule_now(config)
     day_names = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
     today_day = day_names[now.weekday()]
     current_time = now.strftime("%H:%M")
+    schedule_timezone = config.get("schedule_timezone") or LEGACY_SCHEDULE_TIMEZONE
+    timezone_label = "Almaty time" if schedule_timezone == APP_TIMEZONE else "IST"
 
     schedule_days = config.get("schedule_days", [])
     schedule_start = config.get("schedule_start", "09:00")
@@ -2417,18 +2494,18 @@ def get_schedule_status(config):
         next_days = ", ".join([d.capitalize() for d in schedule_days[:3]])
         if len(schedule_days) > 3:
             next_days += "..."
-        return "scheduled", f"Next: {next_days} at {schedule_start} IST"
+        return "scheduled", f"Next: {next_days} at {schedule_start} {timezone_label}"
 
     # Today is a scheduled day - check time
     if schedule_start and schedule_stop:
         if current_time < schedule_start:
-            return "scheduled", f"Starts today at {schedule_start} IST"
+            return "scheduled", f"Starts today at {schedule_start} {timezone_label}"
         elif current_time > schedule_stop:
             # After today's window, will start next scheduled day
-            return "scheduled", f"Next scheduled day at {schedule_start} IST"
+            return "scheduled", f"Next scheduled day at {schedule_start} {timezone_label}"
 
     # Within schedule window
-    return "scheduled", f"Active window: {schedule_start} - {schedule_stop} IST"
+    return "scheduled", f"Active window: {schedule_start} - {schedule_stop} {timezone_label}"
 
 
 #: Display order and descriptive names for the /python exchange selector. Only
@@ -2530,6 +2607,8 @@ def api_get_strategies():
                 "schedule_start_time": config.get("schedule_start"),
                 "schedule_stop_time": config.get("schedule_stop"),
                 "schedule_days": config.get("schedule_days", []),
+                "schedule_timezone": config.get("schedule_timezone")
+                or LEGACY_SCHEDULE_TIMEZONE,
                 "last_started": config.get("last_started"),
                 "last_stopped": config.get("last_stopped"),
                 "error_message": config.get("error_message"),
@@ -2625,6 +2704,8 @@ def api_get_strategy(strategy_id):
                 "schedule_start_time": config.get("schedule_start"),
                 "schedule_stop_time": config.get("schedule_stop"),
                 "schedule_days": config.get("schedule_days", []),
+                "schedule_timezone": config.get("schedule_timezone")
+                or LEGACY_SCHEDULE_TIMEZONE,
                 "last_started": config.get("last_started"),
                 "last_stopped": config.get("last_stopped"),
                 "error_message": config.get("error_message"),
@@ -2919,7 +3000,7 @@ def save_strategy(strategy_id):
             {
                 "status": "success",
                 "message": "Strategy saved successfully",
-                "timestamp": format_ist_time(config["last_modified"]),
+                "timestamp": format_app_time(config["last_modified"]),
             }
         )
 

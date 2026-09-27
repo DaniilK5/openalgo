@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { appTodayDateInput } from '@/lib/dateTime'
 import { useAuthStore } from '@/stores/authStore'
 import { usePortfolioBacktestStore } from '@/stores/portfolioBacktestStore'
 import { cn } from '@/lib/utils'
@@ -40,12 +41,6 @@ const REBALANCE: { value: RebalanceRule; label: string; note: string }[] = [
   { value: 'quarterly', label: 'Quarterly', note: '4x per year' },
   { value: 'yearly', label: 'Yearly', note: '1x per year' },
 ]
-
-function todayISO(offsetYears = 0): string {
-  const d = new Date()
-  d.setFullYear(d.getFullYear() - offsetYears)
-  return d.toISOString().slice(0, 10)
-}
 
 export default function PortfolioBacktester() {
   const navigate = useNavigate()
@@ -63,8 +58,8 @@ export default function PortfolioBacktester() {
   const [benchmark, setBenchmark] = useState('NIFTY')
   const [rebalance, setRebalance] = useState<RebalanceRule>('never')
   const [source, setSource] = useState<PriceSource>('api')
-  const [startDate, setStartDate] = useState(todayISO(5))
-  const [endDate, setEndDate] = useState(todayISO(0))
+  const [startDate, setStartDate] = useState(appTodayDateInput(5))
+  const [endDate, setEndDate] = useState(appTodayDateInput())
   const [charges, setCharges] = useState<ChargeState>(DEFAULT_CHARGES)
   const [costExchange, setCostExchange] = useState<'NSE' | 'BSE'>('NSE')
   const [riskFree, setRiskFree] = useState(0)

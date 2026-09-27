@@ -167,6 +167,7 @@ export interface SchedulerConfig {
   start_time: string | null
   auto_stop_time: string | null
   default_mode: RunMode
+  timezone?: string
 }
 
 /** The durable P&L authority for a strategy whose latest run has ended. */
@@ -1202,26 +1203,22 @@ export function favorablePeakPoints(
 const EM_DASH = '—'
 
 /**
- * A timestamp in IST.
- *
- * The API sends UTC with an explicit `+00:00` offset. Rendering in the
- * browser's zone would put an Indian trading session in whatever zone the
- * laptop is set to, so the zone is pinned and the suffix says which one it is.
+ * A timestamp in the application timezone, independent of the browser setting.
  */
-export function formatIst(iso: string | null | undefined, withSeconds = true): string {
+export function formatAppTimestamp(iso: string | null | undefined, withSeconds = true): string {
   if (!iso) return EM_DASH
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return iso
-  return `${date.toLocaleString('en-IN', {
+  return date.toLocaleString('en-KZ', {
     day: '2-digit',
     month: 'short',
-    year: withSeconds ? 'numeric' : '2-digit',
+    year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
     ...(withSeconds ? { second: '2-digit' as const } : {}),
     hour12: false,
-    timeZone: 'Asia/Kolkata',
-  })} IST`
+    timeZone: 'Asia/Almaty',
+  })
 }
 
 /** P&L for the list: an untraded strategy reads as blank, not as 0.00. */

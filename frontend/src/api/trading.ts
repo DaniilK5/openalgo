@@ -2,11 +2,11 @@ import type {
   ApiResponse,
   GttOrder,
   Holding,
+  HoldingsStats,
   MarginData,
   Order,
   OrderStats,
   PlaceOrderRequest,
-  PortfolioStats,
   Position,
   Trade,
 } from '@/types/trading'
@@ -185,9 +185,9 @@ export const tradingApi = {
    */
   getHoldings: async (
     apiKey: string
-  ): Promise<ApiResponse<{ holdings: Holding[]; statistics: PortfolioStats }>> => {
+  ): Promise<ApiResponse<{ holdings: Holding[]; statistics: HoldingsStats }>> => {
     const response = await apiClient.post<
-      ApiResponse<{ holdings: Holding[]; statistics: PortfolioStats }>
+      ApiResponse<{ holdings: Holding[]; statistics: HoldingsStats }>
     >('/holdings', {
       apikey: apiKey,
     })

@@ -3,7 +3,6 @@
 import csv
 import io
 import json
-
 from datetime import datetime
 
 import pytz
@@ -13,6 +12,7 @@ from sqlalchemy import func
 from database.apilog_db import OrderLog
 from utils.logging import get_logger
 from utils.session import check_session_validity
+from utils.timezones import format_app_datetime
 
 logger = get_logger(__name__)
 
@@ -39,7 +39,7 @@ def sanitize_request_data(data):
     return data
 
 
-def format_log_entry(log, ist):
+def format_log_entry(log):
     """Format a single log entry"""
     try:
         request_data = sanitize_request_data(log.request_data)
@@ -63,7 +63,9 @@ def format_log_entry(log, ist):
             "request_data": request_data,
             "response_data": response_data,
             "strategy": strategy,
-            "created_at": log.created_at.astimezone(ist).strftime("%Y-%m-%d %I:%M:%S %p"),
+            "created_at": format_app_datetime(
+                log.created_at, format_string="%Y-%m-%d %I:%M:%S %p"
+            ),
         }
     except Exception as e:
         logger.exception(f"Error formatting log {log.id}: {str(e)}")
@@ -73,7 +75,9 @@ def format_log_entry(log, ist):
             "request_data": {},
             "response_data": {},
             "strategy": "Unknown",
-            "created_at": log.created_at.astimezone(ist).strftime("%Y-%m-%d %I:%M:%S %p"),
+            "created_at": format_app_datetime(
+                log.created_at, format_string="%Y-%m-%d %I:%M:%S %p"
+            ),
         }
 
 
@@ -124,7 +128,7 @@ def get_filtered_logs(start_date=None, end_date=None, search_query=None, page=No
             query = query.order_by(OrderLog.created_at.desc())
 
         # Format logs
-        logs = [format_log_entry(log, ist) for log in query.all()]
+        logs = [format_log_entry(log) for log in query.all()]
         logger.info(f"Retrieved {len(logs)} logs")
 
         return logs, total_pages, total_logs

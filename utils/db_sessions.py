@@ -47,6 +47,7 @@ SCOPED_SESSION_MODULES = [
     ("database.oauth_db", "db_session"),
     ("database.whatsapp_db", "db_session"),
     ("database.agent_db", "db_session"),
+    ("broker.bybit.database.master_contract_db", "db_session"),
 ]
 
 

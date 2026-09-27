@@ -65,6 +65,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { hydrateMessages } from '@/lib/agent/hydrate'
+import { formatAppDate, formatAppDateTime } from '@/lib/dateTime'
 import type { AgentMessage } from '@/lib/agent/useAgentStream'
 import { cn } from '@/lib/utils'
 
@@ -122,7 +123,7 @@ export function formatRelative(iso: string | null | undefined): string {
   if (seconds < HOUR) return `${Math.round(seconds / MINUTE)}m ago`
   if (seconds < DAY) return `${Math.round(seconds / HOUR)}h ago`
   if (seconds < WEEK) return `${Math.round(seconds / DAY)}d ago`
-  return new Date(then).toLocaleDateString()
+  return formatAppDate(then)
 }
 
 /**
@@ -140,7 +141,7 @@ function titleOf(conversation: Conversation): string {
 function fullStamp(iso: string | null | undefined): string {
   if (!iso) return ''
   const stamp = new Date(iso)
-  return Number.isFinite(stamp.getTime()) ? stamp.toLocaleString() : ''
+  return Number.isFinite(stamp.getTime()) ? formatAppDateTime(stamp) : ''
 }
 
 export interface ConversationSidebarProps {

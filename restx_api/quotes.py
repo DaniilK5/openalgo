@@ -32,10 +32,11 @@ class Quotes(Resource):
             api_key = quotes_data["apikey"]
             symbol = quotes_data["symbol"]
             exchange = quotes_data["exchange"]
+            category = quotes_data.get("category")
 
             # Call the service function to get quotes data with API key
             success, response_data, status_code = get_quotes(
-                symbol=symbol, exchange=exchange, api_key=api_key
+                symbol=symbol, exchange=exchange, api_key=api_key, category=category
             )
 
             return make_response(jsonify(response_data), status_code)

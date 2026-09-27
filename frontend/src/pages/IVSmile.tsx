@@ -257,7 +257,7 @@ export default function IVSmile() {
     ]
 
     const shapes: Partial<PlotlyTypes.Shape>[] = []
-    const annotations: Partial<PlotlyTypes.Annotations>[] = []
+    const annotations: Partial<PlotlyTypes.Annotation>[] = []
 
     // Spot price vertical line
     if (spotPrice) {

@@ -18,6 +18,7 @@ import type {
   TelegramUser,
 } from '@/types/telegram'
 import { showToast } from '@/utils/toast'
+import { formatAppDateTime } from '@/lib/dateTime'
 
 export default function TelegramAnalytics() {
   const [analytics, setAnalytics] = useState<TelegramAnalyticsType | null>(null)
@@ -53,7 +54,7 @@ export default function TelegramAnalytics() {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-'
-    return new Date(dateString).toLocaleString()
+    return formatAppDateTime(dateString)
   }
 
   if (isLoading) {

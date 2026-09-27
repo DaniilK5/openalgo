@@ -14,12 +14,18 @@ single broker session and WebSocket feed:
 | Surface | Route | Purpose |
 | --- | --- | --- |
 | Unified Broker API | `/api/v1/` | External platforms (TradingView, Amibroker, ChartInk, Excel, Python, MCP) |
-| Python Strategy Host | `/python` | In-browser editor; scripts scheduled on IST times, run as isolated subprocesses with live logs |
+| Python Strategy Host | `/python` | In-browser editor; new schedules use Asia/Almaty (legacy schedules keep IST), scripts run as isolated subprocesses with live logs |
 | Flow (No-Code Builder) | `/flow` | Node graph: market data to indicators to conditions to order execution |
 | Strategy Module & RMS | `/strategy` | Multi-leg options strategies with end-to-end risk management, plus a signal-driven mode for per-alert TradingView trading. Two kinds share one engine: `batch` enters and exits every leg together, `signal` moves one leg per alert. Risk rules come from the shared `services/risk/` core. See [`docs/prompt/strategy_rms_documentation.md`](docs/prompt/strategy_rms_documentation.md). |
 | Options & Portfolio Suite | `/tools` | 18 tools. Options analytics (Option Chain, Greeks, OI Tracker, Max Pain, Vol Surface, GEX, IV Smile, Straddle, Arbitrage, ...) plus portfolio and investment tools (Portfolio Backtester, SIP Backtester, Portfolio Analyzer, Strategy Builder). The registry is `frontend/src/lib/tools.ts` — the home page derives its count from it, so add a tool there and both pages update. |
 | Charting Terminal | `/trading` | Line-based chart trading, powered by the `openalgo-charts` package |
 | Scalping Terminal | `/scalping` | Keyboard-driven options scalping (`blueprints/scalping.py` resolves underlying/expiry/strike; index options only — NRML/MIS, never CNC) |
+
+Application date/time displays and newly created or edited schedules use
+`APP_TIMEZONE` from `.env`, defaulting to `Asia/Almaty`. Existing recurring
+schedules retain their previous execution instants when displayed or edited.
+Exchange sessions, chart bucketing, and broker-token expiry keep their
+contract-specific timezones; money remains in its native currency.
 
 All surfaces share the Sandbox engine (1 Crore sandbox capital, exchange-aligned
 auto square-off) and support Telegram alerts.

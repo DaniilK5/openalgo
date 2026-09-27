@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import {
-  formatIst,
+  formatAppTimestamp,
   formatListPnl,
   formatPnl,
   pnlToneClass,
@@ -180,7 +180,7 @@ export default function StrategyList() {
                           {pnl?.finalized ? formatPnl(pnl.total) : formatListPnl(pnl?.total)}
                         </TableCell>
                         <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                          {formatIst(row.updated_at, false)}
+                          {formatAppTimestamp(row.updated_at, false)}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">

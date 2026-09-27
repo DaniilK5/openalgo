@@ -33,6 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useMarketData } from '@/hooks/useMarketData'
 import { isLegClosed } from '@/lib/strategyMath'
 import { cn } from '@/lib/utils'
+import { formatAppDateTime } from '@/lib/dateTime'
 import { useAuthStore } from '@/stores/authStore'
 import { showToast } from '@/utils/toast'
 
@@ -102,8 +103,7 @@ function legPnl(leg: PortfolioLeg, currentLtp: number | undefined): number {
 function formatDate(iso: string | null): string {
   if (!iso) return ''
   try {
-    const d = new Date(iso)
-    return d.toLocaleString('en-IN', {
+    return formatAppDateTime(iso, {
       day: '2-digit',
       month: 'short',
       year: 'numeric',

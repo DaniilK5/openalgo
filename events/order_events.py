@@ -107,6 +107,7 @@ class OrderUpdateEvent(OrderEvent):
     average_price: float = 0.0
     rejection_reason: str = ""
     broker: str = ""
+    order_link_id: str = ""
 
 
 # -----------------------------------------------------------------------------
