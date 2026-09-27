@@ -56,7 +56,7 @@ export function BybitScalping() {
   const [armed, setArmed] = useState(false)
   const [orderError, setOrderError] = useState<string | null>(null)
 
-  const { data: instrumentsResponse, isFetching } = useQuery({
+  const { data: instrumentsResponse, isFetching, isError } = useQuery({
     queryKey: ['scalping', 'bybit-instruments', category, query],
     queryFn: () => scalpingApi.getBybitInstruments(category, query.trim()),
     enabled: broker === 'bybit' && query.trim().length >= 2,
@@ -196,30 +196,52 @@ export function BybitScalping() {
                 setQuery(event.target.value)
               }}
             />
+            <p className="text-xs text-muted-foreground">
+              Enter at least 2 characters, for example BTC, ETH, or BTCUSDT.
+            </p>
             {!instrument && query.trim().length >= 2 && (
               <div className="absolute z-10 mt-1 max-h-72 w-full overflow-auto rounded-md border bg-popover shadow-md">
-                {instruments.map((item) => (
-                  <button
-                    type="button"
-                    key={`${item.category}:${item.symbol}`}
-                    className="block w-full px-3 py-2 text-left font-mono text-sm hover:bg-muted"
-                    onClick={() => {
-                      setInstrument(item)
-                      setQuery('')
-                    }}
-                  >
-                    {item.symbol}
-                    <span className="ml-2 text-muted-foreground">
-                      {item.base_coin && item.quote_coin
-                        ? `${item.base_coin}/${item.quote_coin}`
-                        : item.expiry
-                          ? `${item.expiry} ${item.strike ?? ''} ${item.instrumenttype ?? ''}`
-                          : item.name ?? ''}
-                    </span>
-                  </button>
-                ))}
-                {!isFetching && instruments.length === 0 && (
-                  <div className="px-3 py-2 text-sm text-muted-foreground">No matching Bybit instruments</div>
+                {isError ? (
+                  <div className="px-3 py-2 text-sm text-muted-foreground" role="alert">
+                    The Bybit instrument list is unavailable. Open{' '}
+                    <a className="text-primary underline" href="/master-contract">
+                      Master Contract
+                    </a>
+                    , choose Force Download, then search again.
+                  </div>
+                ) : (
+                  <>
+                    {instruments.map((item) => (
+                      <button
+                        type="button"
+                        key={`${item.category}:${item.symbol}`}
+                        className="block w-full px-3 py-2 text-left font-mono text-sm hover:bg-muted"
+                        onClick={() => {
+                          setInstrument(item)
+                          setQuery('')
+                        }}
+                      >
+                        {item.symbol}
+                        <span className="ml-2 text-muted-foreground">
+                          {item.base_coin && item.quote_coin
+                            ? `${item.base_coin}/${item.quote_coin}`
+                            : item.expiry
+                              ? `${item.expiry} ${item.strike ?? ''} ${item.instrumenttype ?? ''}`
+                              : item.name ?? ''}
+                        </span>
+                      </button>
+                    ))}
+                    {isFetching && instruments.length === 0 && (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                        Searching Bybit instruments...
+                      </div>
+                    )}
+                    {!isFetching && instruments.length === 0 && (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                        No matching Bybit instruments. Try BTC, ETH, or BTCUSDT.
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}
