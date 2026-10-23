@@ -97,7 +97,7 @@ dependencies = [
   "orjson==3.12.0",
   "packaging==24.1",
   "pandas==2.3.3",
-  "pyarrow==23.0.1",
+  "pyarrow==25.0.1",
   "fastparquet==2025.12.0",
   "parso==0.8.7",
   "pexpect==4.9.0",
